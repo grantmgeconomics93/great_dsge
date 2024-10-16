@@ -7,40 +7,7 @@ using Statistics
 using Parameters
 
 # %% Define a structure for DSGE parameters
-@with_kw mutable struct DSGEParams
-    ψ::Float64 = 0.2          # Capital utilization costs
-    ιp::Float64 = 0.5         # Degree of indexation on prices
-    ιw::Float64 = 0.5         # Degree of indexation on wages
-    ξp::Float64 = 0.6         # Calvo price stickiness
-    ξw::Float64 = 0.6         # Calvo wage stickiness
-    ψl::Float64 = 1.4         # CRRA coef. on labor
-    σc::Float64 = 1.2         # CRRA coef. on consumption
-    h::Float64 = 0.7          # Habit consumption
-    ϕ::Float64 = 0.5          # Fixed cost of production
-    S_dd::Float64 = 5.0       # Capital adjustment cost (S'')
-    rπ1::Float64 = 2.0        # Taylor Rule coef. on inflation
-    ry1::Float64 = 0.2        # Taylor Rule coef. on output gap
-    rπ2::Float64 = -0.3       # Taylor Rule coef. on past inflation
-    ry2::Float64 = -0.06      # Taylor Rule coef. on past output gap
-    r::Float64 = 0.7          # Lagged interest rate in Taylor Rule
-    ρa::Float64 = 0.8         # AR(1) coef. on productivity shock
-    ρb::Float64 = 0.8         # AR(1) coef. on preference shock
-    ρg::Float64 = 0.8         # AR(1) coef. on government spending shock
-    ρi::Float64 = 0.8         # AR(1) coef. on investment shock
-    ρw::Float64 = 0.5         # AR(1) coef. on wage mark-up shock
-    ρπ::Float64 = 0.5         # AR(1) coef. on price mark-up shock
-    σa::Float64 = 0.1         # Std. of productivity shock
-    σb::Float64 = 0.1         # Std. of preference shock
-    σg::Float64 = 0.1         # Std. of government spending shock
-    σπ::Float64 = 0.1         # Std. of monetary policy shock
-    σi::Float64 = 0.1         # Std. of investment shock
-    σp::Float64 = 0.1         # Std. of price mark-up shock
-    σw::Float64 = 0.1         # Std. of wage mark-up shock
-    σq::Float64 = 0.1         # Std. of equity premium shock
-    X_star::Float64 = 0.05    # Spread Elasticity
-    ρf::Float64 = 0.8         # AR(1) coef. on finance shock
-    σf::Float64 = 0.1         # Std. of finance shock
-end
+
 
 # %% # Function to solve the DSGE model numerically
 function solve_dsge_model(params::DSGEParams, theta::Vector{Float64})
