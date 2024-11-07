@@ -110,13 +110,14 @@ dfs = [
     inflation,
     moodyCorporateBondYield
 ]
-
-# Function to rename columns by removing spaces
+ 
+ # Function to rename columns by removing leading/trailing spaces and replacing spaces with underscores
 function remove_spaces!(df::DataFrame)
     for col in names(df)
-        new_col = replace(col, r"\s+" => "_")  # Replace spaces with underscores
-        if new_col != col
-            rename!(df, col => new_col)
+        # Remove leading/trailing spaces and replace internal spaces with underscores
+        cleaned_col = strip(replace(col, r"\s+" => "_"))
+        if cleaned_col != col
+            rename!(df, col => cleaned_col)
         end
     end
 end
@@ -130,6 +131,7 @@ for df in dfs
         continue
     end
 end
+
 #%%data handling 
 # PCE Multiply only the second column by a billion
 PCE[!, 2] .= PCE[!, 2] .* 1_000_000_000
@@ -143,8 +145,8 @@ Depositshousehold[!,2] .=  Depositshousehold[!,2] .* 1_000_000_000
 using DataFrames, ShiftedArrays
 
 # Calculate the growth rate for the 'House_Price_Index' column
-lagged_values = ShiftedArrays.lag(housepriceindex[!, "House_Price_Index"], 1)
-growth_rates = [missing; diff(housepriceindex[!, "House_Price_Index"]) ./ lagged_values[2:end] .* 100]
+lagged_values = ShiftedArrays.lag(housepriceindex[!, "_House_Price_Index_"], 1)
+growth_rates = [missing; diff(housepriceindex[!, "_House_Price_Index_"]) ./ lagged_values[2:end] .* 100]
 
 # Add the growth rate column to the DataFrame
 housepriceindex[:, :growthrate] = growth_rates
