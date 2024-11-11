@@ -151,4 +151,136 @@ growth_rates = [missing; diff(housepriceindex[!, "_House_Price_Index_"]) ./ lagg
 # Add the growth rate column to the DataFrame
 housepriceindex[:, :growthrate] = growth_rates
 
-#%%
+#%%make sure all dates aline 
+
+using Dates
+
+# List of DataFrame variables to process
+dfs = [
+    t3_MonthTreasurey,
+    t30_YearFixedRateMortgageAverage,
+    Depositshousehold,
+    PCE,
+    PNFI,
+    ResidentialMortgages,
+    comph,
+    corporatelendingxlsx,
+    housepriceindex,
+    inflation,
+    moodyCorporateBondYield
+]
+
+# Function to filter rows based on the month of the date column
+function filter_quarter_months!(df::DataFrame)
+    date_col = names(df)[1]  # Assume the first column is the date column
+    # Ensure the date column is parsed as `Date` type
+    df[!, date_col] = Date.(df[!, date_col])  # Convert to Date type if necessary
+
+    # Filter for rows where the month is in [01, 04, 07, 10]
+    filtered_df = filter(row -> month(row[date_col]) in [1, 4, 7, 10], df)
+
+    return filtered_df
+end
+
+# Loop through each DataFrame, apply the filter, and update the DataFrame
+for i in 1:length(dfs)
+    try
+        dfs[i] = filter_quarter_months!(dfs[i])
+        println("Successfully filtered DataFrame $i")
+    catch e
+        println("Error processing DataFrame $i: ", e)
+    end
+end
+#%% rename variable to match the model 
+using DataFrames
+
+# Define the mapping of original dataset names to model variable names
+rename_map = Dict(
+    "PCE" => "C",                 # Consumption
+    "PNFI" => "I",                # Investment
+    "inflation" => "π",           # Inflation
+    "comph" => "W",               # Wage
+    "Depositshousehold" => "h",   # Housing Services / Loans to Households
+    "corporatelendingxlsx" => "L",# Corporate Lending
+    "housepriceindex" => "qh",    # House Price Index
+    "moodyCorporateBondYield" => "rc", # Corporate Lending Rates
+    "t3_MonthTreasurey" => "r",   # Policy Rate
+    "t30_YearFixedRateMortgageAverage" => "rh" # Mortgage Rates
+)
+
+# Function to rename both the second column and the DataFrame variable
+function rename_dataframe!(df_name::String, new_name::String)
+    try
+        # Get the DataFrame using its current name
+        df = getfield(Main, Symbol(df_name))
+
+        # Rename the second column (assume the first column is the date)
+        second_col = names(df)[2]
+        rename!(df, second_col => new_name)
+
+        # Reassign the DataFrame to a new global variable with the new name
+        @eval global $(Symbol(new_name)) = df
+
+        println("Renamed DataFrame '$df_name' to '$new_name' and column to '$new_name'")
+    catch e
+        println("Error processing DataFrame '$df_name': ", e)
+    end
+end
+
+# Loop through the rename map and apply the renaming function
+for (old_name, new_name) in rename_map
+    rename_dataframe!(old_name, new_name)
+end
+
+#%% define relevant time frame 
+using DataFrames, Dates
+
+# List of DataFrame variables to process
+dfs = [
+    :t3_MonthTreasurey,
+    :t30_YearFixedRateMortgageAverage,
+    :Depositshousehold,
+    :PCE,
+    :PNFI,
+    :ResidentialMortgages,
+    :comph,
+    :corporatelendingxlsx,
+    :housepriceindex,
+    :inflation,
+    :moodyCorporateBondYield
+]
+
+# Function to filter each DataFrame to a specific date range
+function filter_date_range!(df_name::Symbol, start_date::Date, end_date::Date)
+    try
+        # Retrieve the DataFrame
+        df = getfield(Main, df_name)
+
+        # Ensure the first column is of Date type
+        date_col = names(df)[1]
+        if eltype(df[!, date_col]) != Date
+            df[!, date_col] = Date.(df[!, date_col], dateformat"yyyy-mm-dd")
+        end
+
+        # Filter the DataFrame to the specified date range
+        filtered_df = filter(row -> row[date_col] >= start_date && row[date_col] <= end_date, df)
+
+        # Assign the filtered DataFrame to a new global variable with "_timeframe" suffix
+        new_name = Symbol(string(df_name) * "_timeframe")
+        @eval global $new_name = $filtered_df
+
+        println("Filtered DataFrame '$df_name' to date range: $start_date to $end_date")
+    catch e
+        println("Error processing DataFrame '$df_name': ", e)
+    end
+end
+
+# Define the start and end dates
+start_date = Date("1991-01-01")
+end_date = Date("2005-01-01")
+
+# Loop through each DataFrame and apply the date range filter
+for df_name in dfs
+    filter_date_range!(df_name, start_date, end_date)
+end
+
