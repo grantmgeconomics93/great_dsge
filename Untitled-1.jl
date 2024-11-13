@@ -92,8 +92,44 @@ try
 catch e
     println("Error loading moodyCorporateBondYield.xlsx: ", e)
 end
+#%% Remove spaces before and after 
+dfs = [
+    t3_MonthTreasurey,
+    t30_YearFixedRateMortgageAverage,
+    Depositshousehold,
+    PCE,
+    PNFI,
+    ResidentialMortgages,
+    comph,
+    corporatelendingxlsx,
+    housepriceindex,
+    inflation,
+    moodyCorporateBondYield
+]
+# Loop through each DataFrame in your list and remove spaces from the second column name
+for df in dfs
+    try
+        # Get the current column names
+        col_names = names(df)
 
-#%% Cleaning data
+        # Check if there is a second column and remove spaces if necessary
+        if length(col_names) >= 2
+            new_name = strip(col_names[2])  # Remove leading and trailing spaces
+            rename!(df, col_names[2] => new_name)
+            println("Renamed second column to: '$new_name'")
+        end
+    catch e
+        println("Error processing DataFrame: ", e)
+        continue
+    end
+end
+
+# Check the column names after renaming
+for df in dfs
+    println(names(df))
+end
+
+#%% remove all spaces in between  
 using DataFrames
 
 # List of DataFrame variables to process
@@ -111,28 +147,30 @@ dfs = [
     moodyCorporateBondYield
 ]
  
- # Function to rename columns by removing leading/trailing spaces and replacing spaces with underscores
-function remove_spaces!(df::DataFrame)
-    for col in names(df)
-        # Remove leading/trailing spaces and replace internal spaces with underscores
-        cleaned_col = strip(replace(col, r"\s+" => "_"))
-        if cleaned_col != col
-            rename!(df, col => cleaned_col)
-        end
-    end
-end
-
-# Loop through each DataFrame and apply the renaming function
+# Loop through each DataFrame in your list and remove spaces from the second column name
 for df in dfs
     try
-        remove_spaces!(df)
+        # Get the current column names
+        col_names = names(df)
+
+        # Check if there is a second column and remove all spaces
+        if length(col_names) >= 2
+            new_name = replace(col_names[2], " " => "")  # Remove all spaces
+            rename!(df, col_names[2] => new_name)
+            println("Renamed second column to: '$new_name'")
+        end
     catch e
         println("Error processing DataFrame: ", e)
         continue
     end
 end
+#%%
+# Verify the updated column names
+for df in dfs
+    println(names(df))
+end 
 
-#%%data handling 
+#%%data handling calculate home price growth rate 
 # PCE Multiply only the second column by a billion
 PCE[!, 2] .= PCE[!, 2] .* 1_000_000_000
 #PNFI
@@ -145,8 +183,8 @@ Depositshousehold[!,2] .=  Depositshousehold[!,2] .* 1_000_000_000
 using DataFrames, ShiftedArrays
 
 # Calculate the growth rate for the 'House_Price_Index' column
-lagged_values = ShiftedArrays.lag(housepriceindex[!, "_House_Price_Index_"], 1)
-growth_rates = [missing; diff(housepriceindex[!, "_House_Price_Index_"]) ./ lagged_values[2:end] .* 100]
+lagged_values = ShiftedArrays.lag(housepriceindex[!, "HousePriceIndex"], 1)
+growth_rates = [missing; diff(housepriceindex[!, "HousePriceIndex"]) ./ lagged_values[2:end] .* 100]
 
 # Add the growth rate column to the DataFrame
 housepriceindex[:, :growthrate] = growth_rates
@@ -170,43 +208,27 @@ dfs = [
     moodyCorporateBondYield
 ]
 
-# Function to filter rows based on the month of the date column
-function filter_quarter_months!(df::DataFrame)
-    date_col = names(df)[1]  # Assume the first column is the date column
-    # Ensure the date column is parsed as `Date` type
-    df[!, date_col] = Date.(df[!, date_col])  # Convert to Date type if necessary
-
-    # Filter for rows where the month is in [01, 04, 07, 10]
-    filtered_df = filter(row -> month(row[date_col]) in [1, 4, 7, 10], df)
-
-    return filtered_df
-end
-
-# Loop through each DataFrame, apply the filter, and update the DataFrame
-for i in 1:length(dfs)
-    try
-        dfs[i] = filter_quarter_months!(dfs[i])
-        println("Successfully filtered DataFrame $i")
-    catch e
-        println("Error processing DataFrame $i: ", e)
-    end
-end
+ 
 #%% rename variable to match the model 
 using DataFrames
 
 # Define the mapping of original dataset names to model variable names
 rename_map = Dict(
-    "PCE" => "C",                 # Consumption
-    "PNFI" => "I",                # Investment
-    "inflation" => "π",           # Inflation
-    "comph" => "W",               # Wage
-    "Depositshousehold" => "h",   # Housing Services / Loans to Households
-    "corporatelendingxlsx" => "L",# Corporate Lending
-    "housepriceindex" => "qh",    # House Price Index
-    "moodyCorporateBondYield" => "rc", # Corporate Lending Rates
-    "t3_MonthTreasurey" => "r",   # Policy Rate
-    "t30_YearFixedRateMortgageAverage" => "rh" # Mortgage Rates
+    "PCE" => "C",                          # Personal Consumption Expenditures
+    "PNFI" => "I",                         # Private Nonresidential Fixed Investment
+    "inflation" => "π",                    # Inflation (Gross Domestic Product: Implicit Price Deflator)
+    "comph" => "W",                        # Nonfarm Business Sector: Real Compensation Per Hour
+    "Depositshousehold" => "h",            # Housing Services / Loans to Households (HHMSDODNS)
+    "Depositshousehold" => "b",            # Loans to Households (HHMSDODNS)
+    "corporatelendingxlsx" => "L",         # Corporate Lending (MLBSNNCB)
+    "Depositshousehold" => "D",            # Deposits (DABSHNO)
+    "t3_MonthTreasurey" => "r",            # Policy Rate (TB3MS)
+    "t30_YearFixedRateMortgageAverage" => "rh", # Mortgage Rates (MORTG)
+    "moodyCorporateBondYield" => "rc",     # Corporate Lending Rates (BAA)
+    "housepriceindex" => "qh",             # House Price Index (USSTHPI)
+    "ResidentialMortgages" => "ht" # Housing Services (ht)
 )
+
 
 # Function to rename both the second column and the DataFrame variable
 function rename_dataframe!(df_name::String, new_name::String)
@@ -232,55 +254,55 @@ for (old_name, new_name) in rename_map
     rename_dataframe!(old_name, new_name)
 end
 
-#%% define relevant time frame 
+#%% make the time frequency match 
 using DataFrames, Dates
 
-# List of DataFrame variables to process
+# List of DataFrame variables
 dfs = [
-    :t3_MonthTreasurey,
-    :t30_YearFixedRateMortgageAverage,
-    :Depositshousehold,
-    :PCE,
-    :PNFI,
-    :ResidentialMortgages,
-    :comph,
-    :corporatelendingxlsx,
-    :housepriceindex,
-    :inflation,
-    :moodyCorporateBondYield
+    t3_MonthTreasurey,
+    t30_YearFixedRateMortgageAverage,
+    Depositshousehold,
+    PCE,
+    PNFI,
+    ResidentialMortgages,
+    comph,
+    corporatelendingxlsx,
+    housepriceindex,
+    inflation,
+    moodyCorporateBondYield
 ]
 
-# Function to filter each DataFrame to a specific date range
-function filter_date_range!(df_name::Symbol, start_date::Date, end_date::Date)
-    try
-        # Retrieve the DataFrame
-        df = getfield(Main, df_name)
-
-        # Ensure the first column is of Date type
-        date_col = names(df)[1]
-        if eltype(df[!, date_col]) != Date
-            df[!, date_col] = Date.(df[!, date_col], dateformat"yyyy-mm-dd")
+# Function to filter DataFrame based on date condition
+function filter_dates(df::DataFrame)
+    # Check if the first column is already a Date type
+    if !(eltype(df[:, 1]) <: Date)
+        try
+            # Convert the first column to Date type (assuming it's in "yyyy-mm-dd" format)
+            df[:, 1] = Date.(string.(df[:, 1]), dateformat"yyyy-mm-dd")
+        catch e
+            println("Error converting date column: ", e)
+            return df
         end
-
-        # Filter the DataFrame to the specified date range
-        filtered_df = filter(row -> row[date_col] >= start_date && row[date_col] <= end_date, df)
-
-        # Assign the filtered DataFrame to a new global variable with "_timeframe" suffix
-        new_name = Symbol(string(df_name) * "_timeframe")
-        @eval global $new_name = $filtered_df
-
-        println("Filtered DataFrame '$df_name' to date range: $start_date to $end_date")
-    catch e
-        println("Error processing DataFrame '$df_name': ", e)
     end
+    
+    # Filter rows where the date is the first day of the month and the month is 01, 04, 07, or 10
+    filtered_df = filter(row -> month(row[1]) in [1, 4, 7, 10] && day(row[1]) == 1, df)
+    
+    return filtered_df
 end
 
-# Define the start and end dates
-start_date = Date("1991-01-01")
-end_date = Date("2005-01-01")
+# Apply the filtering function to each DataFrame in the list
+processed_dfs = [filter_dates(df) for df in dfs]
 
-# Loop through each DataFrame and apply the date range filter
-for df_name in dfs
-    filter_date_range!(df_name, start_date, end_date)
-end
+println("Date filtering completed for all DataFrames.") 
+#%% Merge dfs
+
+
+
+
+
+
+select!(mergeddf, Not(:growthrate))
+
+
 
