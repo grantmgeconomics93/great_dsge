@@ -257,52 +257,78 @@ end
 #%% make the time frequency match 
 using DataFrames, Dates
 
-# List of DataFrame variables
-dfs = [
-    t3_MonthTreasurey,
-    t30_YearFixedRateMortgageAverage,
-    Depositshousehold,
-    PCE,
-    PNFI,
-    ResidentialMortgages,
-    comph,
-    corporatelendingxlsx,
-    housepriceindex,
-    inflation,
-    moodyCorporateBondYield
-]
 
-# Function to filter DataFrame based on date condition
-function filter_dates(df::DataFrame)
-    # Check if the first column is already a Date type
-    if !(eltype(df[:, 1]) <: Date)
-        try
-            # Convert the first column to Date type (assuming it's in "yyyy-mm-dd" format)
-            df[:, 1] = Date.(string.(df[:, 1]), dateformat"yyyy-mm-dd")
-        catch e
-            println("Error converting date column: ", e)
-            return df
-        end
+
+# Step 2: Define target quarterly dates (January 1st, April 1st, July 1st, October 1st)
+function get_quarterly_data(df)
+    quarterly_dates = [Date(year, month, 1) for year in year(minimum(df.observation_date)):year(maximum(df.observation_date))
+                                               for month in [1, 4, 7, 10]]
+    
+    # Step 3: Find closest date in the DataFrame for each quarterly date
+    result = DataFrame()
+    for target_date in quarterly_dates
+        # Find the closest date in the DataFrame
+        closest_row = argmin(abs.(df.observation_date .- target_date))
+        row = df[closest_row, :]
+        row[:observation_date] = target_date  # Assign the target quarterly date
+        push!(result, row)
     end
     
-    # Filter rows where the date is the first day of the month and the month is 01, 04, 07, or 10
-    filtered_df = filter(row -> month(row[1]) in [1, 4, 7, 10] && day(row[1]) == 1, df)
-    
-    return filtered_df
+    return result
 end
 
-# Apply the filtering function to each DataFrame in the list
-processed_dfs = [filter_dates(df) for df in dfs]
+# Step 4: Extract the quarterly data
+t30_YearFixedRateMortgageAveragequarterly = get_quarterly_data(t30_YearFixedRateMortgageAverage)
 
-println("Date filtering completed for all DataFrames.") 
+# Step 5: Format the dates as requested (e.g., "1947-01-01")
+t30_YearFixedRateMortgageAveragequarterly.observation_date = Dates.format.(t30_YearFixedRateMortgageAveragequarterly.observation_date, "yyyy-mm-dd")
+
 #%% Merge dfs
 
 
+using Chain, DataFrames
+
+# Helper function to get the first column name as a Symbol
+first_col(df) = Symbol(names(df)[1])
+
+# Helper function to get the second column name as a Symbol
+second_col(df) = Symbol(names(df)[2])
+
+# Merge DataFrames using Chain and selecting only the second column of each DataFrame
+mergeddf = @chain t3_MonthTreasurey begin
+    select(first_col(t3_MonthTreasurey), second_col(t3_MonthTreasurey))
+    innerjoin(select(t30_YearFixedRateMortgageAverage, first_col(t30_YearFixedRateMortgageAverage), second_col(t30_YearFixedRateMortgageAverage)), on = first_col(t30_YearFixedRateMortgageAverage))
+    innerjoin(select(Depositshousehold, first_col(Depositshousehold), second_col(Depositshousehold)), on = first_col(Depositshousehold))
+    innerjoin(select(PCE, first_col(PCE), second_col(PCE)), on = first_col(PCE))
+    innerjoin(select(PNFI, first_col(PNFI), second_col(PNFI)), on = first_col(PNFI))
+    innerjoin(select(ResidentialMortgages, first_col(ResidentialMortgages), second_col(ResidentialMortgages)), on = first_col(ResidentialMortgages))
+    innerjoin(select(comph, first_col(comph), second_col(comph)), on = first_col(comph))
+    innerjoin(select(corporatelendingxlsx, first_col(corporatelendingxlsx), second_col(corporatelendingxlsx)), on = first_col(corporatelendingxlsx))
+    innerjoin(select(housepriceindex, first_col(housepriceindex), second_col(housepriceindex)), on = first_col(housepriceindex))
+    innerjoin(select(inflation, first_col(inflation), second_col(inflation)), on = first_col(inflation))
+    innerjoin(select(moodyCorporateBondYield, first_col(moodyCorporateBondYield), second_col(moodyCorporateBondYield)), on = first_col(moodyCorporateBondYield))
+end
+
+#%% create subsets 
+using Dates, DataFrames
+
+# Define the date ranges
+start_date1 = Date("1991-01-01")
+end_date1 = Date("2006-01-01")
+
+start_date2 = Date("1995-01-01")
+end_date2 = Date("2013-01-01")
+
+# Subset 1: From 1991-01-01 to 2006-01-01
+target = filter(row -> row[:observation_date] >= start_date1 && row[:observation_date] <= end_date1, mergeddf)
+
+# Subset 2: From 1995-01-01 to 2013-01-01
+test = filter(row -> row[:observation_date] >= start_date2 && row[:observation_date] <= end_date2, mergeddf)
+
+#%%
 
 
 
-
-select!(mergeddf, Not(:growthrate))
 
 
 
