@@ -337,7 +337,7 @@ data_matrix = Matrix(target[:, data_columns])
 
 # Apply MODWT with levels corresponding to 16-32 quarters (4-8 years)
 wavelet_filter = wavelet(Daubechies, 2)
-levels = 5  # Adjust levels as needed
+levels = 4 # Adjust levels as needed
 
 # Apply MODWT to each column
 modwt_data = [modwt(data_matrix[:, i], wavelet_filter, levels) for i in 1:size(data_matrix, 2)]
@@ -426,96 +426,223 @@ declare_variables!(model, [
 
 # Equations
 @equations model begin
-    # 1. Household Utility Function - First-Order Conditions
-    # Patient Household Euler Equation with Habit Formation
-    λ_t == (1 - a) * ε_z_t / (cP_t - a * cP_t_1) - a * βP * E[ (1 - a) * ε_z_{t+1} / (cP_{t+1} - a * cP_t) ]
+# Define the model equations
+@equations model begin
+    #################################
+    # 1. Labor Market Equations
+    #################################
     
-    # Patient Household Labor Supply Condition
-    (lP_t)^ϕ == λ_t * w_t
+    # Wage Phillips Curve (Equation 3)
+    kw * (π_ws_t - π_{w_{t-1}} * π_t^(1 - ω)) * π_ws_t ==
+        βP * E_t[ (λ_{t+1}^s / λ_t^s) * kw * (π_{ws_{t+1}} - π_w_t * π_{t+1}^{1 - ω}) * π_{ws_{t+1}} * (l_{t+1}^s / l_t^s) ] +
+        (1 - ε_t^l) * l_t^s + (ε_t^l * l_t^{1 + φ}) / (λ_t^s * w_t^s)
     
-    # Patient Household Housing Demand Condition
-    ε_h_t / hP_t == q_h_t * λ_t - βP * E[ q_h_{t+1} * λ_{t+1} ]
+    # Definition of wage inflation (Equation 4)
+    π_ws_t == (w_t^s / w_{t-1}^s) * π_t
     
-    # Impatient Household Euler Equation (similar structure)
-    λI_t == (1 - a) * ε_z_t / (cI_t - a * cI_t_1) - a * βI * E[ (1 - a) * ε_z_{t+1} / (cI_{t+1} - a * cI_t) ]
+    # Labor Demand (Equation 2)
+    l_t^s(i, m) == ( (W_t^s(m) / W_{t-1}^s(m)) )^( - ε_t^l ) * l_t^s
+
+    #################################
+    # 2. Capital Producers Equations
+    #################################
     
-    # Impatient Household Labor Supply Condition
-    (lI_t)^ϕ == λI_t * w_t
+    # Price of capital equation (Equation 6)
+    q_k_t * [ 1 - (ki / 2) * ( (i_t * e_k_t) / (i_{t-1} * e_{k_{t-1}}) - 1 )^2 ] +
+    ki * ( (i_t * e_k_t) / (i_{t-1} * e_{k_{t-1}}) - 1 ) * ( (i_t * e_k_t) / (i_{t-1} * e_{k_{t-1}}) ) +
+    βE * E_t[ (λ_{t+1}^E / λ_t^E) * ki * ( (i_{t+1} * e_{k_{t+1}}) / (i_t * e_k_t) - 1 ) *
+              ( (i_{t+1} * e_{k_{t+1}}) / (i_t * e_k_t) ) * q_{k_{t+1}} ] == 1
     
-    # Impatient Household Housing Demand Condition
-    ε_h_t / hI_t == q_h_t * λI_t - βI * E[ q_h_{t+1} * λI_{t+1} ]
+    # Law of motion of capital (Equation 7)
+    k_t == (1 - δ) * k_{t-1} + [ 1 - (ki / 2) * ( (i_t * e_k_t) / (i_{t-1} * e_{k_{t-1}}) - 1 )^2 ] * i_t
     
-    # 2. Patient Households' Budget Constraint
-    cP_t + q_h_t * hP_t + dP_t == w_t * lP_t + ((1 + r_t_1) / π_t) * dP_t_1
+    #################################
+    # 3. Final Goods Producers Equations
+    #################################
     
-    # 3. Impatient Households' Budget Constraint
-    cI_t + q_h_t * hI_t + (1 + r_bh_t) * bI_t == w_t * lI_t + bI_{t-1} / π_t
+    # New Keynesian Phillips Curve for price inflation (Equation 10)
+    (1 - ε_t^p) + ε_t^p * (P_t^w / P_t) -
+    kp * (π_t - π_{t-1}^p * π_t^{(1 - υ)}) * π_t +
+    βP * E_t[ (λ_{t+1}^P / λ_t^P) * kp * (π_{t+1} - π_t^p * π_{t+1}^{(1 - υ)}) * π_{t+1}^2 * (y_{t+1} / y_t) ] == 0
     
-    # 4. Impatient Households' Borrowing Constraint
-    (1 + r_bh_t) * bI_t <= mI_t * E[ q_h_t1 * hI_t * π_t1 ]
+    # Demand Function for Final Goods (Equation 9)
+    y_t(j) == ( P_t(j) / P_t )^( - ε_t^p ) * y_t
+
+    #################################
+    # 4. Households Equations
+    #################################
     
-    # 5. Entrepreneur's Budget Constraint
-    cE_t + w_t * lE_P_t + w_t * lE_I_t + (1 + r_be_t_1) * bE_t_1 + q_k_t * kE_t + F_u_t * kE_t_1 ==
-        yE_t / x_t + bE_t + q_k_t * (1 - δ) * kE_t_1
+    # Patient Households' Budget Constraint (Equation 2)
+    C_t^P + q_h_t * (H_t^P - H_{t-1}^P) + d_t^P ==
+        W_t^P * L_t^P + (1 + r_{t-1}) * (d_{t-1}^P / π_t)
+    
+    # Impatient Households' Budget Constraint (Equation 3)
+    C_t^I + q_h_t * (H_t^I - H_{t-1}^I) + (1 + r_{t-1}^{bH}) * (b_{t-1}^I / π_t) ==
+        W_t^I * L_t^I + b_t^I
+    
+    # Borrowing Constraint for Impatient Households (Equation 4)
+    (1 + r_t^{bH}) * b_t^I <= m_t^I * E_t[ q_h_{t+1} * H_{t+1}^I * π_{t+1} ]
+    
+    # Marginal Utility of Consumption for Patient Households
+    λ_t^P == (1 - α) * ε_t^c / (C_t^P - α * C_{t-1}^P)
+    
+    # Marginal Utility of Consumption for Impatient Households
+    λ_t^I == (1 - α) * ε_t^c / (C_t^I - α * C_{t-1}^I)
+    
+    #################################
+    # 5. Entrepreneurs Equations
+    #################################
+    
+    # Entrepreneurs' Budget Constraint (Equation 6)
+    C_t^E + W_t^P * L_t^{P,E} + W_t^I * L_t^{I,E} + (1 + r_{t-1}^E) * (b_{t-1}^E / π_t) +
+    q_k_t * k_t^E + F(u_t) * k_{t-1}^E ==
+        (y_t^E / χ_t) + b_t^E + q_k_t * (1 - δ) * k_{t-1}^E
+    
+    # Entrepreneurs' Production Function (Equation 7)
+    y_t^E == A_t^E * (k_{t-1}^E * u_t)^θ * (L_t^E)^(1 - α)
+    
+    # Borrowing Constraint for Entrepreneurs (Equation 8)
+    (1 + r_t^E) * b_t^E <= m_t^E * E_t[ q_{k_{t+1}} * (1 - δ) * k_t^E * π_{t+1} ]
+    
+    # Marginal Utility of Consumption for Entrepreneurs
+    λ_t^E == (1 - α) / (C_t^E - α * C_{t-1}^E)
+    
+    #################################
+    # 6. Wholesale Branch Equations
+    #################################
+    
+    # Capital Requirement Adjustment Cost (Equation 10)
+    Adj_kb_t == (k_bb / 2) * ( (K_b_t / B_t) - ν_b )^2
+    
+    # Balance Sheet Constraint (Equation 11)
+    B_t == D_t + K_b_t + ε_t^{kb}
+    
+    # Law of Motion for Bank Capital (Equation 12)
+    K_b_t * π_t == (1 - δ_b) * K_{b_{t-1}} + Ω * D_{t-1}
+    
+    # Wholesale Interest Rate (Equation 13)
+    R_t^B == r_t - k_bb * ( (K_b_t / B_t) - ν_b ) * (K_b_t / B_t)^2
+    
+    #################################
+    # 7. Retail Branch Equations
+    #################################
+    
+    # Demand Function for Loans (Equation 15)
+    b_t^n == ( R_t^{bn}(j) / R_t^{bn} )^( - ε_t^n ) * b_t^n_star  # Assuming b_t^n_star is the benchmark loan demand
+    
+    # Adjustment Cost on Commercial Interest Rates (Equation 16)
+    Adj_kn_t == (k_bn / 2) * ( (R_t^{bn} / R_{t-1}^{bn} - 1) )^2 * b_t^n
+    
+    # Interest Rate Setting Equation (Equation 17)
+    1 - ε_t^n + ε_t^n * (R_t^{bn} / R_t^B) -
+    ε_t^n * k_bn * ( (R_t^{bn} / R_{t-1}^{bn} - 1) ) * (R_t^{bn} / R_{t-1}^{bn} ) +
+    β * E_t[ (λ_{t+1}^I / λ_t^I) * k_bn * ( (R_{t+1}^{bn} / R_t^{bn} - 1) ) * (R_{t+1}^{bn} / R_t^{bn} ) * (2 * b_{t+1}^n / b_t^n) ] == 0
+    
+    #################################
+    # 8. Monetary Policy Equation
+    #################################
+    
+    # Taylor Rule (Equation 18)
+    (1 + r_t) == (1 + r̄)^(1 - φ_r) * (1 + r_{t-1})^(φ_r) *
+                 (π_t / π̄)^(φ_π * (1 - φ_r)) *
+                 (y_t / y_{t-1})^(φ_y * (1 - φ_r)) *
+                 (1 + ε_t^R)
+    
+    #################################
+    # 9. Resource Constraint and Aggregation
+    #################################
+    
+    # Resource Constraint of the Economy (Equation 19)
+    y_t == c_t +
+           q_k_t * [ k_t - (1 - δ) * k_{t-1} ] +
+           k_{t-1} * [ ξ1 * (u_t - 1) + (ξ2 / 2) * (u_t - 1)^2 ] +
+           (δ_b * K_{b_{t-1}}) / π_t + G_t +
+           Adj_kb_t + Adj_kn_t + Adj_p_t + Adj_w_t  # Include all adjustment costs
+    
+    # Aggregate Consumption (Equation 20)
+    c_t == c_t^P + c_t^I + c_t^E + ε_t^c
+    
+    # Aggregate Housing (Equation 21)
+    h == h_t^P + h_t^I   # Assuming total housing supply h is normalized to 1
     
     # Capital Utilization Cost Function
-    F_u_t == ξ1 * (u_t - 1) + (ξ2 / 2) * (u_t - 1)^2
+    F(u_t) == ξ1 * (u_t - 1) + (ξ2 / 2) * (u_t - 1)^2
     
-    # 6. Cobb-Douglas Production Function for Entrepreneurs
-    yE_t == A_t_E * (kE_t_1 * u_t)^α * lE_t^(1 - α)
+    #################################
+    # 10. Additional Equations and Definitions
+    #################################
     
-    # 7. Bank's Optimization - First-Order Conditions
-    # Loan Rate Setting (Simplified)
-    (1 + R_t) == (1 + r_t) * (1 + ε_R_t)
+    # Marginal Cost
+    mct == P_t^w / P_t
     
-    # Capital Requirement Adjustment
-    K_b_t == v_b * B_t
+    # Price Level Evolution
+    π_t == P_t / P_{t-1}
     
-    # Adjustment Cost
-    Adj_kb_t == (k_kb / 2) * ( (K_b_t / K_b_{t-1}) - 1 )^2
+    # Aggregate Price Index (Definition)
+    # Assuming Calvo pricing is not used, so P_t evolves according to the price-setting behavior
+    # If needed, include an equation for P_t based on the model's specifics
     
-    # 8. Capital Accumulation with Adjustment Costs
-    k_t == (1 - δ) * k_t_1 + i_t * (1 - (κ / 2) * ( (i_t / i_{t-1}) - 1 )^2 )
+    # Wage Index (Definition)
+    # Similar to the price index, define W_t if required
     
-    # 9. Price Adjustment Equation (New Keynesian Phillips Curve)
-    π_t == βP * E[ π_{t+1} ] + κ_p * (mct - 1)
-    
-    # 10. Wage Adjustment Equation
-    w_t == (w_{t-1})^(ι_w) * (π_{t-1})^(ι_w) * (1 + λ_w * (lP_t)^ϕ)
-    
-    # 11. Market Clearing Conditions
-    # Total Consumption
-    c_t == cP_t + cI_t + cE_t
-    
-    # Total Housing
-    h_t == hP_t + hI_t
-    
-    # Goods Market Clearing
-    y_t == c_t + i_t + G_t + Adj_kb_t + F_u_t * kE_t_1 + δ_b * K_b_{t-1} * π_t + sum(Adj_t_j)
+    # Definitions of Real Wages
+    w_t^P == W_t^P / P_t
+    w_t^I == W_t^I / P_t
+    w_t^s == W_t^s / P_t
     
     # Labor Market Clearing
-    lP_t + lI_t + lE_P_t + lE_I_t == L_t
+    L_t^P + L_t^I + L_t^E == L_t^s
     
     # Capital Market Clearing
-    k_t == kE_t
+    k_t^E == k_t
     
-    # 12. Taylor Rule for Monetary Policy
-    (1 + r_t) == (1 + r̄)^(1 - ϕ_R) * (1 + r_t_1)^(ϕ_R) * (π_t / π̄)^(ϕ_π * (1 - ϕ_R)) *
-                 (y_t / y_t_1)^(ϕ_y * (1 - ϕ_R)) * (1 + ε_R_t)
+    # Loan Market Clearing
+    b_t^I + b_t^E == B_t
     
-    # 13. Laws of Motion for Exogenous Shocks
-    ln(A_t_E) == ρ_A * ln(A_t_1) + ε_A_t
-    ln(ε_z_t) == ρ_εz * ln(ε_z_t_1) + ε_εz_t
-    ln(ε_h_t) == ρ_εh * ln(ε_h_t_1) + ε_εh_t
-    ε_R_t == ρ_R * ε_R_{t-1} + ε_εR_t
+    # Housing Market Clearing
+    H_t^P + H_t^I == h   # Total housing supply
     
-    # 14. Marginal Cost Definition
-    mct == (w_t / A_t_E) * ( (1 - α) / α ) * ( kE_t_1 * u_t / lE_t )
+    # Aggregate Output
+    y_t == y_t^E   # Assuming entrepreneurs produce the aggregate output
     
-    # 15. Resource Constraint (Redundant with Goods Market Clearing)
-     c_t + i_t + G_t + F_u_t * kE_t_1 + Adj_kb_t == y_t
+    # Real Estate Price Dynamics
+    # Include equations for q_h_t if applicable
     
-    # Include any additional equations needed for the model
+    # Expectations Operator
+    # Ensure that E_t[...] is properly defined in your modeling framework
+    
+    # Exogenous Processes
+    # Preference Shock
+    ln(ε_t^c) == ρ_c * ln(ε_{t-1}^c) + ε_{c_t}
+    
+    # Housing Demand Shock
+    ln(ε_t^h) == ρ_h * ln(ε_{t-1}^h) + ε_{h_t}
+    
+    # Labor Supply Shock
+    ln(ε_t^l) == ρ_l * ln(ε_{t-1}^l) + ε_{l_t}
+    
+    # Price Markup Shock
+    ln(ε_t^p) == ρ_p * ln(ε_{t-1}^p) + ε_{p_t}
+    
+    # Monetary Policy Shock
+    ε_t^R == ρ_R * ε_{t-1}^R + ε_{R_t}
+    
+    # Total Factor Productivity Shock
+    ln(A_t^E) == ρ_A * ln(A_{t-1}^E) + ε_{A_t}
+    
+    # Loan-to-Value Ratios
+    ln(m_t^I) == (1 - ρ_mI) * ln(m̄_I) + ρ_mI * ln(m_{t-1}^I) + ε_{mI_t}
+    ln(m_t^E) == (1 - ρ_mE) * ln(m̄_E) + ρ_mE * ln(m_{t-1}^E) + ε_{mE_t}
+    
+    # Interest Rate Spread Shock
+    ln(ε_t^{kb}) == ρ_kb * ln(ε_{t-1}^{kb}) + ε_{kb_t}
+    
+    # ... Include any other exogenous processes as needed
+    
+end
+
+    
+   
 end
 
 # Prior Distributions for Estimated Parameters
