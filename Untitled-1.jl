@@ -308,7 +308,7 @@ mergeddf = @chain t3_MonthTreasurey begin
     innerjoin(select(inflation, first_col(inflation), second_col(inflation)), on = first_col(inflation))
     innerjoin(select(moodyCorporateBondYield, first_col(moodyCorporateBondYield), second_col(moodyCorporateBondYield)), on = first_col(moodyCorporateBondYield))
 end
-
+#%% solve contained 
 #%% create subsets 
 using Dates, DataFrames
 
@@ -325,7 +325,304 @@ target = filter(row -> row[:observation_date] >= start_date1 && row[:observation
 # Subset 2: From 1995-01-01 to 2013-01-01
 test = filter(row -> row[:observation_date] >= start_date2 && row[:observation_date] <= end_date2, mergeddf)
 
-#%%
+#%% contained maximizations focs to plug in to the dsge
+#%% Patient household 
+using Symbolics
+
+# Define time variable
+@variables t
+
+# Define parameters and functions
+@syms β_P a φ ε_z(t) ε_h(t)
+@syms c_P(t) h_P(t) d_P(t) q_h(t) w_P(t) l_P(t) r(t) π(t)
+
+# Define the utility function U_P
+U_P = β_P^t * ((1 - a) * ε_z(t) * log(c_P(t) - a * c_P(t - 1)) +
+               ε_h(t) * log(h_P(t)) -
+               (h_P(t)^(1 + φ)) / (1 + φ))
+
+# Define the budget constraint BC_P
+BC_P = w_P(t) * l_P(t) + (1 + r(t - 1)) / π(t) * d_P(t - 1) -
+       (c_P(t) + q_h(t) * h_P(t) + d_P(t))
+
+# Define the Lagrangian L_P
+@syms λ_P
+L_P = U_P + λ_P * BC_P
+
+# Compute the FOCs by differentiating the Lagrangian with respect to c_P(t), h_P(t), and d_P(t)
+FOC_c_P = expand_derivatives(Differential(c_P(t))(L_P))
+FOC_h_P = expand_derivatives(Differential(h_P(t))(L_P))
+FOC_d_P = expand_derivatives(Differential(d_P(t))(L_P))
+
+# Display the FOCs
+println("FOC with respect to c_P(t) Patient households:")
+display(FOC_c_P)
+
+println("\nFOC with respect to h_P(t) Patient households :")
+display(FOC_h_P)
+
+println("\nFOC with respect to d_P(t) Patient households:")
+display(FOC_d_P)
+#%% unpaticent household 
+using Symbolics
+
+# Define callable variables
+@variables t
+@syms β_I a φ ε_z(t) ε_h(t)
+@syms c_I(t) h_I(t) b_I(t) q_h(t) w_I(t) l_I(t) r(t) π(t) m_I(t) λ_I μ_I
+
+# Impatient Household's Utility Function
+U_I = β_I^t * ((1 - a) * ε_z(t) * log(c_I(t) - a * c_I(t-1)) +
+               ε_h(t) * log(h_I(t)) -
+               (h_I(t)^(1 + φ)) / (1 + φ))
+
+# Impatient Household's Budget Constraint
+BC_I = w_I(t) * l_I(t) + b_I(t) - (c_I(t) + q_h(t) * h_I(t) + (1 + r(t-1)) / π(t) * b_I(t-1))
+
+# Impatient Household's Borrowing Constraint
+Borrowing_C = (1 + r(t)) * b_I(t) - m_I(t) * q_h(t+1) * h_I(t) * π(t+1)
+
+# Define the Lagrangian for Impatient Household
+L_I = U_I + λ_I * BC_I + μ_I * Borrowing_C
+
+# Compute FOCs for Impatient Household
+FOC_c_I = expand_derivatives(Differential(c_I(t))(L_I))
+FOC_h_I = expand_derivatives(Differential(h_I(t))(L_I))
+FOC_b_I = expand_derivatives(Differential(b_I(t))(L_I))
+
+# Display the FOCs
+println("Impatient Household's FOCs:")
+
+println("\nFOC with respect to c_I(t) Impatient households:")
+display(FOC_c_I)
+
+println("\nFOC with respect to h_I(t) Impatient households:")
+display(FOC_h_I)
+
+println("\nFOC with respect to b_I(t) Impatient households:")
+display(FOC_b_I)
+#%% entrepreneurs 
+using Symbolics
+
+# Define callable variables
+@variables t
+@syms β_E a φ ε_u(t) ε_ξ ξ_1 ξ_2 δ m_E(t)
+@syms c_E(t) b_E(t) q_k(t) k_E(t) u(t) r_be(t) π(t) Y_E(t) A_E(t) L_P(t) L_I(t) w_P(t) w_I(t)
+
+# Utility function for Entrepreneurs
+U_E = β_E^t * ((1 - a) * log(c_E(t) - a * c_E(t-1)))
+
+# Budget constraint
+BC_E = w_P(t) * L_P(t) + w_I(t) * L_I(t) + (1 + r_be(t-1)) / π(t) * b_E(t-1) +
+       q_k(t) * u(t) * k_E(t-1) + ε_ξ * (u(t) - 1) + (ξ_1 * (u(t) - 1) + ξ_2 * (u(t) - 1)^2) * k_E(t-1) -
+       (c_E(t) + b_E(t) + q_k(t) * (1 - δ) * k_E(t-1))
+
+# Production function
+Prod_F = A_E(t) * (k_E(t-1) * u(t))^φ * L_I(t)^(1-φ)
+
+# Borrowing constraint
+Borrowing_C = (1 + r_be(t)) * b_E(t) - m_E(t) * q_k(t+1) * k_E(t) * π(t+1)
+
+# Define Lagrangian for Entrepreneurs
+@syms λ_E μ_E
+L_E = U_E + λ_E * BC_E + μ_E * Borrowing_C
+
+# Compute FOCs
+FOC_c_E = expand_derivatives(Differential(c_E(t))(L_E))
+FOC_k_E = expand_derivatives(Differential(k_E(t))(L_E))
+FOC_u = expand_derivatives(Differential(u(t))(L_E))
+FOC_b_E = expand_derivatives(Differential(b_E(t))(L_E))
+
+
+
+println("\nFOC with respect to entrepreneurs c_E(t):")
+display(FOC_c_E)
+
+println("\nFOC with respect to Entrepreneurs  k_E(t):")
+display(FOC_k_E)
+
+println("\nFOC with respect to entrepreneurs u(t):")
+display(FOC_u)
+
+println("\nFOC with respect to Entrepreneurs  b_E(t):")
+display(FOC_b_E)
+
+#%% bankbranch
+using Symbolics
+
+# Define callable variables
+@variables t
+@syms β_R R_b(t) R_d(t) π(t) b_T(t) D_T(t) K_b(t) Adj_kb k_b v_b δ_b ξ_kb Ω
+@syms r(t)
+
+# Wholesale Branch Profit Function
+Profit = β_R^t * ((1 + R_b(t)) * b_T(t) - b_T(t+1) * π(t+1) -
+                  (1 + R_d(t)) * D_T(t) + D_T(t+1) * π(t+1) -
+                  (K_b(t+1) * π(t+1) - K_b(t)) -
+                  Adj_kb / 2 * ((k_b / b_T(t)) * K_b(t) - v_b)^2 * K_b(t))
+
+# Adjustment cost term
+Adj_kb_term = Adj_kb / 2 * ((k_b / b_T(t)) * K_b(t) - v_b)^2 * K_b(t)
+
+# Capital/assets ratio constraint (Basel II)
+Basel_II_C = Adj_kb_term
+
+# Balance sheet constraint
+Balance_Sheet_C = b_T(t) ~ D_T(t) + K_b(t) + ξ_kb
+
+# Law of motion for bank capital
+Capital_LoM = K_b(t+1) * π(t+1) ~ (1 - δ_b) * K_b(t) + Ω * ξ_kb
+
+# Wholesale Interest Rate Constraint
+Interest_Rate_C = R_b(t) ~ r(t) - k_b * (k_b / b_T(t)) * (K_b(t) / b_T(t))^2
+
+# Define the Lagrangian
+@syms λ_bs λ_lom λ_basel
+L_W = Profit +
+      λ_bs * (b_T(t) - (D_T(t) + K_b(t) + ξ_kb)) +
+      λ_lom * ((1 - δ_b) * K_b(t) + Ω * ξ_kb - K_b(t+1) * π(t+1)) +
+      λ_basel * Basel_II_C
+
+# Compute FOCs
+FOC_b_T = expand_derivatives(Differential(b_T(t))(L_W))
+FOC_D_T = expand_derivatives(Differential(D_T(t))(L_W))
+FOC_K_b = expand_derivatives(Differential(K_b(t))(L_W))
+
+# Display the FOCs
+println("Wholesale Branch's FOCs:")
+
+println("\nFOC with respect to b_T(t) (Total loans):")
+display(FOC_b_T)
+
+println("\nFOC with respect to D_T(t) (Deposits):")
+display(FOC_D_T)
+
+println("\nFOC with respect to K_b(t) (Bank capital):")
+display(FOC_K_b)
+
+#%% retail branch 
+using Symbolics
+
+# Define callable variables
+@variables t
+@syms r_bn(t) r_bm(t) b_tn(t) b_tm(t) Adj_rbn(t) ε_bn(t) k_bn β_E λ_t
+
+# Retail Branch Objective Function
+Objective = r_bn(t) * b_tn(t) - r_bm(t) * b_tm(t) - Adj_rbn(t)
+
+# Demand Function for Loans
+Loan_Demand = b_tn(t) ~ (r_bn(t) / r_bm(t))^(-ε_bn(t)) * b_tm(t)
+
+# Adjustment Cost on Retail Interest Rates
+Adj_Cost = k_bn / 2 * ((r_bn(t) / r_bm(t) - 1)^2) * b_tm(t)
+
+# Full Retail Branch Objective with Costs
+Full_Objective = β_E^t * (r_bn(t) * b_tn(t) - r_bm(t) * b_tm(t) - Adj_Cost)
+
+# Define Lagrangian
+@syms λ_Loan
+L_Retail = Full_Objective + λ_Loan * (b_tn(t) - (r_bn(t) / r_bm(t))^(-ε_bn(t)) * b_tm(t))
+
+# Compute FOCs for Retail Branch
+FOC_r_bn = expand_derivatives(Differential(r_bn(t))(L_Retail))
+FOC_b_tn = expand_derivatives(Differential(b_tn(t))(L_Retail))
+FOC_b_tm = expand_derivatives(Differential(b_tm(t))(L_Retail))
+
+# Display FOCs
+println("Retail Branch's FOCs:")
+
+println("\nFOC with respect to r_bn(t) (Retail interest rate):")
+display(FOC_r_bn)
+
+println("\nFOC with respect to b_tn(t) (Total loans by retail branch):")
+display(FOC_b_tn)
+
+println("\nFOC with respect to b_tm(t) (Loan supply to retail branch):")
+display(FOC_b_tm)
+
+#%% wage
+using Symbolics
+
+# Define callable variables
+@variables t
+@syms β_l W_L(t) P(t) l_i(t) k_w W_L_star(t) π(t) π_w_star(t) l(t)
+@syms ε_l φ λ_l m
+
+# Profit function for unions
+Profit = β_l^t * (
+    (W_L(t) / P(t)) * l_i(t) -
+    k_w / 2 * ((W_L(t) / W_L_star(t-1)) - π(t-1) * π_w_star(t))^2 * W_L(t) / P(t) -
+    (l_i(t)^(1+φ)) / (1+φ)
+)
+
+# Labor demand
+Labor_Demand = l_i(t) ~ (W_L(t) / W_L_star(t-1))^(-ε_l) * l(t)
+
+# New Keynesian Phillips Curve for Wage Inflation
+NKPC = k_w * ((π_w_star(t) / (π(t-1) * π_w_star(t))) - 1) * π_w_star(t) ~
+    β_l * λ_l * (k_w * ((π_w_star(t+1) / (π(t) * π_w_star(t+1))) - 1)^2 / π(t+1)) +
+    (1 - ε_l) * l_i(t)^(1+φ) / λ_l
+
+# Define Lagrangian
+@syms λ_d
+L_Labor = Profit + λ_d * (l_i(t) - (W_L(t) / W_L_star(t-1))^(-ε_l) * l(t))
+
+# Compute FOCs for the labor market
+FOC_W_L = expand_derivatives(Differential(W_L(t))(L_Labor))
+FOC_l_i = expand_derivatives(Differential(l_i(t))(L_Labor))
+
+# Display FOCs
+println("Labor Market's FOCs:")
+
+println("\nFOC with respect to W_L(t) (Nominal wage):")
+display(FOC_W_L)
+
+println("\nFOC with respect to l_i(t) (Labor supply):")
+display(FOC_l_i)
+
+println("\nNew Keynesian Phillips Curve for Wage Inflation:")
+display(NKPC)
+#%% Capital 
+using Symbolics
+
+# Define callable variables
+@variables t
+@syms β_E λ_E q_k(t) i(t) i_E(t) k_i δ k(t) k_prev u(t)  # Replace k(t-1) with k_prev for clarity
+
+# Utility Function for Capital Producers
+Utility_Capital = β_E^t * λ_E * (q_k(t) * i(t) - k_i / 2 * (i_E(t) / k_prev - 1)^2 * i(t))
+
+# Price of Capital Equation
+Price_Capital = q_k(t) * (1 - k_i / 2 * (i_E(t) / k_prev - 1)^2 + k_i * (i_E(t) / k_prev - 1) * (i_E(t) / k_prev)) +
+                β_E * (λ_E / λ_E) * (u(t+1) * q_k(t+1) * (1 + k_i * (i_E(t+1) / i(t) - 1)) / u(t)) ~ 1
+
+# Law of Motion of Capital
+Capital_Law = k(t) ~ (1 - δ) * k_prev + (1 - k_i / 2 * (i_E(t) / k_prev - 1)^2) * i(t)
+
+# Define the Lagrangian for Capital Producers
+@syms λ_C
+L_Capital = Utility_Capital + λ_C * (k(t) - ((1 - δ) * k_prev + (1 - k_i / 2 * (i_E(t) / k_prev - 1)^2) * i(t)))
+
+# Compute First-Order Conditions (FOCs)
+FOC_q_k = expand_derivatives(Differential(q_k(t))(L_Capital))  # FOC with respect to q_k(t)
+FOC_i = expand_derivatives(Differential(i(t))(L_Capital))      # FOC with respect to i(t)
+
+# Display Results
+println("Capital Producers' FOCs:")
+
+println("\nFOC with respect to q_k(t) (Price of capital):")
+display(FOC_q_k)
+
+println("\nFOC with respect to i(t) (Investment):")
+display(FOC_i)
+
+println("\nPrice of Capital Equation:")
+display(Price_Capital)
+
+println("\nLaw of Motion of Capital:")
+display(Capital_Law)
+
+#%%  dsge
 using DSGE, Wavelets, CSV, DataFrames, Statistics, LinearAlgebra
 
 # Assuming 'target' is your DataFrame already loaded in Julia
@@ -534,9 +831,11 @@ declare_variables!(model, [
     Adj_kn_t == (k_bn / 2) * ( (R_t^{bn} / R_{t-1}^{bn} - 1) )^2 * b_t^n
     
     # Interest Rate Setting Equation (Equation 17)
-    1 - ε_t^n + ε_t^n * (R_t^{bn} / R_t^B) -
-    ε_t^n * k_bn * ( (R_t^{bn} / R_{t-1}^{bn} - 1) ) * (R_t^{bn} / R_{t-1}^{bn} ) +
-    β * E_t[ (λ_{t+1}^I / λ_t^I) * k_bn * ( (R_{t+1}^{bn} / R_t^{bn} - 1) ) * (R_{t+1}^{bn} / R_t^{bn} ) * (2 * b_{t+1}^n / b_t^n) ] == 0
+  # Interest Rate Setting Equation (Equation 17)
+ 1 - ε_t^n + ε_t^n * (R_t_bn / R_t^B) -
+ k_bn * ( (R_t_bn / R_{t-1}_bn - 1) ) * (R_t_bn / R_{t-1}_bn ) +
+ β * E_t[ (λI_{t+1} / λI_t) * k_bn * ( (R_{t+1}_bn / R_t_bn - 1) ) * (R_{t+1}_bn / R_t_bn )^2 * (b_{t+1}^n / b_t^n) ] == 0
+
     
     #################################
     # 8. Monetary Policy Equation
