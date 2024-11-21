@@ -425,9 +425,10 @@ display(FOC_h_P_simplified)
 println("\nLinearized FOC with respect to d_P(t) (Patient households):")
 display(FOC_d_P_simplified)
 
+
 #%% impaticent household 
 using Symbolics
-
+using Symbolics
 
 # Define time variable
 @variables t
@@ -445,47 +446,36 @@ U_I = β_I^t * ((1 - a) * ε_z(t) * log(c_I(t) - a * c_I(t - 1)) +
 BC_I = w_I(t) * l_I(t) + b_I(t) - (c_I(t) + q_h(t) * h_I(t) + (1 + r_b(t)) / pi_var(t) * b_I(t - 1))
 
 # Define the borrowing constraint Borrowing_C
-Borrowing_C = (1 + r_b(t)) * b_I(t) - m_I * q_h(t+1) * h_I(t) * pi_var(t+1)
+Borrowing_C = m_I * q_h(t+1) * h_I(t) * pi_var(t+1) - (1 + r_b(t)) * b_I(t)
 
 # Define the Lagrangian L_I
 L_I = U_I + λ_I * BC_I + μ_I * Borrowing_C
 
-# Compute the FOCs by differentiating the Lagrangian
+# Compute FOCs by differentiating the Lagrangian
 FOC_c_I = expand_derivatives(Differential(c_I(t))(L_I)) ~ 0
 FOC_h_I = expand_derivatives(Differential(h_I(t))(L_I)) ~ 0
 FOC_b_I = expand_derivatives(Differential(b_I(t))(L_I)) ~ 0
 
-# Solve for λ_I from FOC_c_I
-λ_I_expr = symbolic_linear_solve(FOC_c_I, λ_I)
+# Case 1: Borrowing Constraint is Binding
+println("\nCase 1: Borrowing Constraint is Binding (Active)")
+Borrowing_C_binding_rule = Dict(Borrowing_C => 0)  # Binding constraint as substitution rule
+FOC_b_I_binding = substitute(FOC_b_I, Borrowing_C_binding_rule)  # Substitute rule into FOC
+display(FOC_b_I_binding)
 
-# Substitute λ_I into FOC_h_I to simplify
-FOC_h_I_substituted = substitute(FOC_h_I, λ_I => λ_I_expr)
-
-# Solve for μ_I from FOC_b_I
-μ_I_expr = symbolic_linear_solve(FOC_b_I, μ_I)
-
-# Substitute μ_I into the substituted FOC_h_I to eliminate both multipliers
-FOC_h_I_no_lagrange = substitute(FOC_h_I_substituted, μ_I => μ_I_expr)
+# Case 2: Borrowing Constraint is Non-Binding
+println("\nCase 2: Borrowing Constraint is Non-Binding (Inactive)")
+μ_I_nonbinding_rule = Dict(μ_I => 0)  # Non-binding Lagrange multiplier as substitution rule
+FOC_b_I_nonbinding = substitute(FOC_b_I, μ_I_nonbinding_rule)  # Substitute rule into FOC
+display(FOC_b_I_nonbinding)
 
 # Display Results
-println("FOC with respect to c_I(t) (Impatient households):")
+println("\nFOC with respect to c_I(t):")
 display(FOC_c_I)
 
-println("\nFOC with respect to h_I(t) (Impatient households):")
+println("\nFOC with respect to h_I(t):")
 display(FOC_h_I)
 
-println("\nFOC with respect to b_I(t) (Impatient households):")
-display(FOC_b_I)
 
-println("\nSimplified FOC for h_I(t) without Lagrange multipliers:")
-display(FOC_h_I_no_lagrange)
-
-# Add interpretation for binding/non-binding constraint
-println("\nWhen Borrowing Constraint is Binding (Active):")
-println("The borrowing constraint is treated as an equality, and μ_I > 0.")
-
-println("\nWhen Borrowing Constraint is Not Binding (Inactive):")
-println("Set μ_I = 0 in the above equations to simplify.")
 
 #%% impatient household linearize
 using Symbolics
@@ -552,80 +542,65 @@ display(FOC_b_I_simplified)
 
 
 #%% entrepreneurs 
-
-
 using Symbolics
 
-# Define time variable
-@variables t
-
 # Define parameters and variables
-@syms β_E a φ δ ξ_1 ξ_2 m_E
-@syms c_E(t) k_E(t) b_E(t) u(t) l_E(t) Y_E(t) A_E(t)
-@syms q_k(t) r_be(t) pi_var(t) X_t λ_E μ_E
+@syms β_E a φ ξ_1 ξ_2 δ m_E
+@syms ε_z(t) A_E(t) X_t pi_var(t) r_be(t) q_k(t)                # Functions of time
+@syms c_E(t) u(t) k_E(t) k_E_t_minus1 c_E_t_minus1 b_E(t)       # Time-shifted variables
+@syms l_EP(t) l_EI(t) w_LP(t) w_LI(t)                          # Labor-related variables
 
-# Define utility function U_E
-U_E = β_E^t * log(c_E(t) - a * c_E(t - 1))
+# Utility Function
+U_E = β_E^t * (1 - a) * log(c_E(t) - a * c_E_t_minus1)
 
-# Define utilization cost F(u)
+# Utilization Cost Function
 F_u = ξ_1 * (u(t) - 1) + 0.5 * ξ_2 * (u(t) - 1)^2
 
-# Define production function Y_E
-Y_E = A_E(t) * (u(t) * k_E(t-1))^φ * l_E(t)^(1 - φ)
+# Production Function
+Y_E = A_E(t) * (u(t) * k_E_t_minus1)^φ * (l_EP(t) + l_EI(t))^(1 - φ)
 
-# Define budget constraint BC_E
-BC_E = Y_E / X_t + (1 + r_be(t-1)) / pi_var(t) * b_E(t-1) + q_k(t) * (1 - δ) * k_E(t-1) - (
-    c_E(t) + q_k(t) * k_E(t) + b_E(t) + F_u * k_E(t-1)
+# Budget Constraint
+BC_E = Y_E / X_t + (1 + r_be(t-1)) / pi_var(t) * b_E(t-1) + q_k(t) * (1 - δ) * k_E_t_minus1 - (
+    c_E(t) + q_k(t) * k_E(t) + b_E(t) + F_u * k_E_t_minus1 + w_LP(t) * l_EP(t) + w_LI(t) * l_EI(t)
 )
 
-# Define borrowing constraint Borrowing_C as equality (when binding)
+# Borrowing Constraint (Assumed Binding)
 Borrowing_C = (1 + r_be(t)) * b_E(t) - m_E * q_k(t+1) * (1 - δ) * k_E(t) * pi_var(t+1)
 
-# Define the Lagrangian L_E
+# Define Lagrangian
+@syms λ_E μ_E  # Lagrange multipliers
 L_E = U_E + λ_E * BC_E + μ_E * Borrowing_C
 
-# Compute the FOCs by differentiating the Lagrangian
-FOC_c_E = expand_derivatives(Differential(c_E(t))(L_E)) ~ 0
-FOC_k_E = expand_derivatives(Differential(k_E(t))(L_E)) ~ 0
-FOC_u = expand_derivatives(Differential(u(t))(L_E)) ~ 0
-FOC_b_E = expand_derivatives(Differential(b_E(t))(L_E)) ~ 0
-
-# Solve for λ_E from FOC_c_E
-λ_E_expr = symbolic_linear_solve(FOC_c_E, λ_E)
-
-# Substitute λ_E into FOC_k_E
-FOC_k_E_substituted = substitute(FOC_k_E, λ_E => λ_E_expr)
-
-# Solve for μ_E from FOC_b_E
-μ_E_expr = symbolic_linear_solve(FOC_b_E, μ_E)
-
-# Substitute μ_E into FOC_k_E_substituted to eliminate both multipliers
-FOC_k_E_no_lagrange = substitute(FOC_k_E_substituted, μ_E => μ_E_expr)
+# First-Order Conditions (FOCs)
+FOC_c_E = expand_derivatives(Differential(c_E(t))(L_E)) ~ 0  # FOC wrt consumption
+FOC_u = expand_derivatives(Differential(u(t))(L_E)) ~ 0       # FOC wrt utilization
+FOC_k_E = expand_derivatives(Differential(k_E(t))(L_E)) ~ 0   # FOC wrt capital
+FOC_b_E = expand_derivatives(Differential(b_E(t))(L_E)) ~ 0   # FOC wrt borrowing
 
 # Display Results
-println("FOC with respect to c_E(t) (Entrepreneurs):")
+println("FOC with respect to c_E(t):")
 display(FOC_c_E)
 
-println("\nFOC with respect to k_E(t) (Entrepreneurs):")
-display(FOC_k_E)
-
-println("\nFOC with respect to u(t) (Entrepreneurs):")
+println("\nFOC with respect to u(t):")
 display(FOC_u)
 
-println("\nFOC with respect to b_E(t) (Entrepreneurs):")
+println("\nFOC with respect to k_E(t):")
+display(FOC_k_E)
+
+println("\nFOC with respect to b_E(t):")
 display(FOC_b_E)
 
-println("\nSimplified FOC for k_E(t) without Lagrange multipliers:")
-display(FOC_k_E_no_lagrange)
+# Complementary Slackness Condition (Optional for Borrowing Constraint)
+Slackness_Condition = μ_E * Borrowing_C ~ 0  # μ_E ≥ 0 and Borrowing_C ≤ 0
+println("\nComplementary Slackness Condition:")
+display(Slackness_Condition)
 
-# Add analysis for binding/non-binding constraint
-println("\nWhen Borrowing Constraint is Binding (Active):")
-println("The borrowing constraint is treated as an equality.")
 
-println("\nWhen Borrowing Constraint is Not Binding (Inactive):")
-println("Set μ_E = 0 in the above equations.")
+
+
 
 #%% entrepreneurs linearize
+#%% Entrepreneurs Linearize
 using Symbolics
 
 # Define variables and parameters
@@ -636,9 +611,12 @@ using Symbolics
 # Define FOCs (Entrepreneurs)
 FOC_c_E = (β_E^t) / (c_E(t) - a * c_E(t-1)) - λ_E ~ 0
 FOC_k_E = -q_k(t) * λ_E + m_E * q_k(t+1) * π_var(t+1) * (-1 + δ) * μ_E ~ 0
-FOC_u = ((k_E(t-1) * (l_E(t)^(1 - φ)) * A_E(t) * ((k_E(t-1) * u(t))^(-1 + φ)) * φ) / X_t -
+FOC_u = ((k_E(t-1) * (l_E(t)^(1 - φ)) * A_E(t) * ((k_E(t-1) * u(t))^(-1 + φ)) * φ) / X_t - 
          k_E(t-1) * (ξ_1 + (-1 + u(t)) * ξ_2)) * λ_E ~ 0
 FOC_b_E = -λ_E + (1 + r_be(t)) * μ_E ~ 0
+
+# Add Complementary Slackness Condition
+Comp_Slackness = (b_E(t) * (1 + r_be(t)) - m_E * q_k(t+1) * k_E(t) * π_var(t+1) * (1 - δ)) * μ_E ~ 0
 
 # Steady-state conditions (formatted as substitutions)
 steady_state_subs = Dict(
@@ -683,11 +661,15 @@ FOC_u_linearized = substitute(FOC_u_linearized, linearized_vars)
 FOC_b_E_linearized = substitute(FOC_b_E, steady_state_subs)
 FOC_b_E_linearized = substitute(FOC_b_E_linearized, linearized_vars)
 
+Comp_Slackness_linearized = substitute(Comp_Slackness, steady_state_subs)
+Comp_Slackness_linearized = substitute(Comp_Slackness_linearized, linearized_vars)
+
 # Simplify the linearized equations
 FOC_c_E_simplified = expand(FOC_c_E_linearized)
 FOC_k_E_simplified = expand(FOC_k_E_linearized)
 FOC_u_simplified = expand(FOC_u_linearized)
 FOC_b_E_simplified = expand(FOC_b_E_linearized)
+Comp_Slackness_simplified = expand(Comp_Slackness_linearized)
 
 # Display Results
 println("Linearized FOC with respect to c_E(t) (Entrepreneurs):")
@@ -702,6 +684,8 @@ display(FOC_u_simplified)
 println("\nLinearized FOC with respect to b_E(t) (Entrepreneurs):")
 display(FOC_b_E_simplified)
 
+println("\nLinearized Complementary Slackness Condition (Entrepreneurs):")
+display(Comp_Slackness_simplified)
 
 
 
