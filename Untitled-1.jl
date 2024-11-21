@@ -329,16 +329,10 @@ test = filter(row -> row[:observation_date] >= start_date2 && row[:observation_d
 #%% Patient household 
 using Symbolics
 
-
-#%% unpaticent household 
-using Symbolics
-
-using Symbolics
-
 # Define time variable
 @variables t
 
-# Define parameters and functions
+# Define parameters and variables
 @syms β_P a φ ε_z(t) ε_h(t)
 @syms c_P(t) h_P(t) d_P(t) q_h(t) w_P(t) l_P(t) r(t) pi_var(t) λ_P
 
@@ -352,14 +346,22 @@ BC_P = w_P(t) * l_P(t) + (1 + r(t - 1)) / pi_var(t) * d_P(t - 1) -
        (c_P(t) + q_h(t) * h_P(t) + d_P(t))
 
 # Define the Lagrangian L_P
+@syms λ_P
 L_P = U_P + λ_P * BC_P
 
-# Compute the FOCs by differentiating the Lagrangian with respect to c_P(t), h_P(t), and d_P(t)
-FOC_c_P = expand_derivatives(Differential(c_P(t))(L_P))
-FOC_h_P = expand_derivatives(Differential(h_P(t))(L_P))
-FOC_d_P = expand_derivatives(Differential(d_P(t))(L_P))
+# Compute the FOCs
+FOC_c_P = expand_derivatives(Differential(c_P(t))(L_P)) ~ 0
+FOC_h_P = expand_derivatives(Differential(h_P(t))(L_P)) ~ 0
+FOC_d_P = expand_derivatives(Differential(d_P(t))(L_P)) ~ 0
 
-# Display the FOCs
+# Solve for λ_P using the FOCs
+λ_P_from_c_P = symbolic_linear_solve(FOC_c_P, λ_P)
+λ_P_from_h_P = symbolic_linear_solve(FOC_h_P, λ_P)
+
+# Substitute λ_P into the system to eliminate it
+FOC_h_P_no_lambda = substitute(λ_P_from_h_P, λ_P => λ_P_from_c_P)
+
+# Display Results
 println("FOC with respect to c_P(t) (Patient households):")
 display(FOC_c_P)
 
@@ -369,34 +371,104 @@ display(FOC_h_P)
 println("\nFOC with respect to d_P(t) (Patient households):")
 display(FOC_d_P)
 
-# Define callable variables
-@variables t
-@syms β_I a φ ε_z(t) ε_h(t)
-@syms c_I(t) h_I(t) b_I(t) q_h(t) w_I(t) l_I(t) r(t) pi_var(t) m_I(t) λ_I μ_I
+println("\nSimplified system without λ_P:")
+display(FOC_h_P_no_lambda)
 
-# Impatient Household's Utility Function
-U_I = β_I^t * ((1 - a) * ε_z(t) * log(c_I(t) - a * c_I(t-1)) +
+#%%linearize patient households
+using Symbolics
+
+# Define variables and parameters
+@syms β_P ε_z(t) ε_h(t) φ a q_h(t) h_P(t) c_P(t) d_P(t)
+@syms c_P_ss h_P_ss q_h_ss d_P_ss ε_z_ss ε_h_ss λ_P_ss  # Steady-state values
+@syms Δc_P Δh_P Δq_h Δd_P  # Deviations from steady state
+
+# Define FOCs (Simplified System)
+FOC_c_P = ((1 - a) * (β_P^t) * ε_z(t)) / (c_P(t) - a * c_P(t-1)) - λ_P_ss
+FOC_h_P = (β_P^t) * (ε_h(t) / h_P(t) - (h_P(t)^φ)) - q_h(t) * λ_P_ss
+FOC_d_P = -λ_P_ss
+
+# Steady-state conditions (formatted as substitutions)
+steady_state_subs = Dict(
+    ε_z(t) => ε_z_ss,
+    ε_h(t) => ε_h_ss,
+    c_P(t) => c_P_ss,
+    h_P(t) => h_P_ss,
+    q_h(t) => q_h_ss,
+    d_P(t) => d_P_ss
+)
+
+# Define linearized variables (formatted as substitutions)
+linearized_vars = Dict(
+    c_P(t) => c_P_ss * (1 + Δc_P),  # Linearize c_P around steady state
+    h_P(t) => h_P_ss * (1 + Δh_P),  # Linearize h_P around steady state
+    q_h(t) => q_h_ss * (1 + Δq_h),  # Linearize q_h around steady state
+    d_P(t) => d_P_ss * (1 + Δd_P)   # Linearize d_P around steady state
+)
+
+# Substitute steady state and deviations into FOCs
+FOC_c_P_linearized = substitute(substitute(FOC_c_P, steady_state_subs), linearized_vars)
+FOC_h_P_linearized = substitute(substitute(FOC_h_P, steady_state_subs), linearized_vars)
+FOC_d_P_linearized = substitute(substitute(FOC_d_P, steady_state_subs), linearized_vars)
+
+# Simplify the linearized equations
+FOC_c_P_simplified = expand(FOC_c_P_linearized)
+FOC_h_P_simplified = expand(FOC_h_P_linearized)
+FOC_d_P_simplified = expand(FOC_d_P_linearized)
+
+# Display Results
+println("Linearized FOC with respect to c_P(t) (Patient households):")
+display(FOC_c_P_simplified)
+
+println("\nLinearized FOC with respect to h_P(t) (Patient households):")
+display(FOC_h_P_simplified)
+
+println("\nLinearized FOC with respect to d_P(t) (Patient households):")
+display(FOC_d_P_simplified)
+
+#%% impaticent household 
+using Symbolics
+
+
+# Define time variable
+@variables t
+
+# Define parameters and variables
+@syms β_I a φ ε_z(t) ε_h(t)
+@syms c_I(t) h_I(t) b_I(t) q_h(t) w_I(t) l_I(t) r_b(t) pi_var(t) m_I λ_I μ_I
+
+# Define the utility function U_I
+U_I = β_I^t * ((1 - a) * ε_z(t) * log(c_I(t) - a * c_I(t - 1)) +
                ε_h(t) * log(h_I(t)) - 
                (h_I(t)^(1 + φ)) / (1 + φ))
 
-# Impatient Household's Budget Constraint
-BC_I = w_I(t) * l_I(t) + b_I(t) - (c_I(t) + q_h(t) * h_I(t) + (1 + r(t-1)) / pi_var(t) * b_I(t-1))
+# Define the budget constraint BC_I
+BC_I = w_I(t) * l_I(t) + b_I(t) - (c_I(t) + q_h(t) * h_I(t) + (1 + r_b(t)) / pi_var(t) * b_I(t - 1))
 
-# Impatient Household's Borrowing Constraint
-Borrowing_C = (1 + r(t)) * b_I(t) - m_I(t) * q_h(t+1) * h_I(t) * pi_var(t+1)
+# Define the borrowing constraint Borrowing_C
+Borrowing_C = (1 + r_b(t)) * b_I(t) - m_I * q_h(t+1) * h_I(t) * pi_var(t+1)
 
-# Define the Lagrangian for Impatient Household
+# Define the Lagrangian L_I
 L_I = U_I + λ_I * BC_I + μ_I * Borrowing_C
 
-# Compute FOCs for Impatient Household
-FOC_c_I = expand_derivatives(Differential(c_I(t))(L_I))
-FOC_h_I = expand_derivatives(Differential(h_I(t))(L_I))
-FOC_b_I = expand_derivatives(Differential(b_I(t))(L_I))
+# Compute the FOCs by differentiating the Lagrangian
+FOC_c_I = expand_derivatives(Differential(c_I(t))(L_I)) ~ 0
+FOC_h_I = expand_derivatives(Differential(h_I(t))(L_I)) ~ 0
+FOC_b_I = expand_derivatives(Differential(b_I(t))(L_I)) ~ 0
 
-# Display the FOCs
-println("Impatient Household's FOCs:")
+# Solve for λ_I from FOC_c_I
+λ_I_expr = symbolic_linear_solve(FOC_c_I, λ_I)
 
-println("\nFOC with respect to c_I(t) (Impatient households):")
+# Substitute λ_I into FOC_h_I to simplify
+FOC_h_I_substituted = substitute(FOC_h_I, λ_I => λ_I_expr)
+
+# Solve for μ_I from FOC_b_I
+μ_I_expr = symbolic_linear_solve(FOC_b_I, μ_I)
+
+# Substitute μ_I into the substituted FOC_h_I to eliminate both multipliers
+FOC_h_I_no_lagrange = substitute(FOC_h_I_substituted, μ_I => μ_I_expr)
+
+# Display Results
+println("FOC with respect to c_I(t) (Impatient households):")
 display(FOC_c_I)
 
 println("\nFOC with respect to h_I(t) (Impatient households):")
@@ -405,318 +477,735 @@ display(FOC_h_I)
 println("\nFOC with respect to b_I(t) (Impatient households):")
 display(FOC_b_I)
 
-#%% entrepreneurs 
+println("\nSimplified FOC for h_I(t) without Lagrange multipliers:")
+display(FOC_h_I_no_lagrange)
 
+# Add interpretation for binding/non-binding constraint
+println("\nWhen Borrowing Constraint is Binding (Active):")
+println("The borrowing constraint is treated as an equality, and μ_I > 0.")
+
+println("\nWhen Borrowing Constraint is Not Binding (Inactive):")
+println("Set μ_I = 0 in the above equations to simplify.")
+
+#%% impatient household linearize
 using Symbolics
 
-# Define callable variables
-@variables t
-@syms β_E a φ ε_u(t) ε_ξ ξ_1 ξ_2 δ m_E(t)
-@syms c_E(t) b_E(t) q_k(t) k_E(t) u(t) r_be(t) pi_var(t) Y_E(t) A_E(t) L_P(t) L_I(t) w_P(t) w_I(t)
-@syms λ_E μ_E
+# Define variables and parameters
+@syms β_I ε_z(t) ε_h(t) φ a q_h(t) h_I(t) c_I(t) b_I(t) r_b(t) λ_I μ_I m_I π_var(t)
+@syms c_I_ss h_I_ss q_h_ss b_I_ss r_b_ss π_var_ss ε_z_ss ε_h_ss λ_I_ss μ_I_ss  # Steady-state values
+@syms Δc_I Δh_I Δq_h Δb_I Δπ_var Δr_b  # Deviations from steady state
 
-# Utility function for Entrepreneurs
-U_E = β_E^t * ((1 - a) * log(c_E(t) - a * c_E(t-1)))
+# Define FOCs (Impatient Households)
+FOC_c_I = ((1 - a) * (β_I^t) * ε_z(t)) / (c_I(t) - a * c_I(t-1)) - λ_I ~ 0
+FOC_h_I = (β_I^t) * (ε_h(t) / h_I(t) - (h_I(t)^φ)) - q_h(t) * λ_I - m_I * π_var(t+1) * q_h(t+1) * μ_I ~ 0
+FOC_b_I = λ_I + (1 + r_b(t)) * μ_I ~ 0
 
-# Budget constraint
-BC_E = w_P(t) * L_P(t) + w_I(t) * L_I(t) + (1 + r_be(t-1)) / pi_var(t) * b_E(t-1) +
-       q_k(t) * u(t) * k_E(t-1) + ε_ξ * (u(t) - 1) + (ξ_1 * (u(t) - 1) + ξ_2 * (u(t) - 1)^2) * k_E(t-1) -
-       (c_E(t) + b_E(t) + q_k(t) * (1 - δ) * k_E(t-1))
-
-# Production function
-Prod_F = A_E(t) * (k_E(t-1) * u(t))^φ * L_I(t)^(1-φ)
-
-# Borrowing constraint
-Borrowing_C = (1 + r_be(t)) * b_E(t) - m_E(t) * q_k(t+1) * k_E(t) * pi_var(t+1)
-
-# Define Lagrangian for Entrepreneurs
- L_E = U_E + λ_E * BC_E + μ_E * Borrowing_C
-
-# Compute FOCs
-FOC_c_E = expand_derivatives(Differential(c_E(t))(L_E))
-FOC_k_E = expand_derivatives(Differential(k_E(t))(L_E))
-FOC_u = expand_derivatives(Differential(u(t))(L_E))
-FOC_b_E = expand_derivatives(Differential(b_E(t))(L_E))
-
-# Display FOCs
-println("\nFOC with respect to c_E(t) (Entrepreneurs' consumption):")
-display(FOC_c_E)
-
-println("\nFOC with respect to k_E(t) (Entrepreneurs' capital):")
-display(FOC_k_E)
-
-println("\nFOC with respect to u(t) (Utilization rate):")
-display(FOC_u)
-
-println("\nFOC with respect to b_E(t) (Entrepreneurs' borrowing):")
-display(FOC_b_E)
-
-
-#%% bankbranch
-using Symbolics
-
-
-# Define callable variables
-@variables t
-@syms β_R R_b(t) R_d(t) pi_var(t) b_T(t) D_T(t) K_b(t) Adj_kb k_b v_b δ_b ξ_kb Ω
-@syms r(t) λ_bs λ_lom λ_basel
-
-# Wholesale Branch Profit Function
-Profit = β_R^t * (
-    (1 + R_b(t)) * b_T(t) - b_T(t+1) * pi_var(t+1) -
-    (1 + R_d(t)) * D_T(t) + D_T(t+1) * pi_var(t+1) -
-    (K_b(t+1) * pi_var(t+1) - K_b(t)) -
-    Adj_kb / 2 * ((k_b / b_T(t)) * K_b(t) - v_b)^2 * K_b(t)
+# Steady-state conditions (formatted as substitutions)
+steady_state_subs = Dict(
+    ε_z(t) => ε_z_ss,
+    ε_h(t) => ε_h_ss,
+    c_I(t) => c_I_ss,
+    h_I(t) => h_I_ss,
+    q_h(t) => q_h_ss,
+    b_I(t) => b_I_ss,
+    π_var(t) => π_var_ss,
+    r_b(t) => r_b_ss,
+    λ_I => λ_I_ss,
+    μ_I => μ_I_ss
 )
 
-# Adjustment cost term
-Adj_kb_term = Adj_kb / 2 * ((k_b / b_T(t)) * K_b(t) - v_b)^2 * K_b(t)
+# Define linearized variables (formatted as substitutions)
+linearized_vars = Dict(
+    c_I(t) => c_I_ss * (1 + Δc_I),          # Linearize c_I around steady state
+    h_I(t) => h_I_ss * (1 + Δh_I),          # Linearize h_I around steady state
+    q_h(t) => q_h_ss * (1 + Δq_h),          # Linearize q_h around steady state
+    b_I(t) => b_I_ss * (1 + Δb_I),          # Linearize b_I around steady state
+    r_b(t) => r_b_ss * (1 + Δr_b),          # Linearize r_b around steady state
+    π_var(t) => π_var_ss * (1 + Δπ_var)     # Linearize π_var around steady state
+)
 
-# Capital/assets ratio constraint (Basel II)
-Basel_II_C = Adj_kb_term
+# Substitute steady state and deviations into FOCs
+FOC_c_I_linearized = substitute(FOC_c_I, steady_state_subs)
+FOC_c_I_linearized = substitute(FOC_c_I_linearized, linearized_vars)
 
-# Balance sheet constraint
-Balance_Sheet_C = b_T(t) ~ D_T(t) + K_b(t) + ξ_kb
+FOC_h_I_linearized = substitute(FOC_h_I, steady_state_subs)
+FOC_h_I_linearized = substitute(FOC_h_I_linearized, linearized_vars)
 
-# Law of motion for bank capital
-Capital_LoM = K_b(t+1) * pi_var(t+1) ~ (1 - δ_b) * K_b(t) + Ω * ξ_kb
+FOC_b_I_linearized = substitute(FOC_b_I, steady_state_subs)
+FOC_b_I_linearized = substitute(FOC_b_I_linearized, linearized_vars)
 
-# Wholesale Interest Rate Constraint
-Interest_Rate_C = R_b(t) ~ r(t) - k_b * (k_b / b_T(t)) * (K_b(t) / b_T(t))^2
+# Simplify the linearized equations
+FOC_c_I_simplified = expand(FOC_c_I_linearized)
+FOC_h_I_simplified = expand(FOC_h_I_linearized)
+FOC_b_I_simplified = expand(FOC_b_I_linearized)
 
-# Define the Lagrangian
-L_W = Profit +
-      λ_bs * (b_T(t) - (D_T(t) + K_b(t) + ξ_kb)) +
-      λ_lom * ((1 - δ_b) * K_b(t) + Ω * ξ_kb - K_b(t+1) * pi_var(t+1)) +
-      λ_basel * Basel_II_C
+# Display Results
+println("Linearized FOC with respect to c_I(t) (Impatient households):")
+display(FOC_c_I_simplified)
 
-# Compute FOCs
-FOC_b_T = expand_derivatives(Differential(b_T(t))(L_W))
-FOC_D_T = expand_derivatives(Differential(D_T(t))(L_W))
-FOC_K_b = expand_derivatives(Differential(K_b(t))(L_W))
+println("\nLinearized FOC with respect to h_I(t) (Impatient households):")
+display(FOC_h_I_simplified)
 
-# Display the FOCs
-println("Wholesale Branch's FOCs:")
-
-println("\nFOC with respect to b_T(t) (Total loans):")
-display(FOC_b_T)
-
-println("\nFOC with respect to D_T(t) (Deposits):")
-display(FOC_D_T)
-
-println("\nFOC with respect to K_b(t) (Bank capital):")
-display(FOC_K_b)
+println("\nLinearized FOC with respect to b_I(t) (Impatient households):")
+display(FOC_b_I_simplified)
 
 
-# Define callable variables
+
+#%% entrepreneurs 
+
+
+using Symbolics
+
+# Define time variable
 @variables t
-@syms β_R R_b(t) R_d(t) π(t) b_T(t) D_T(t) K_b(t) Adj_kb k_b v_b δ_b ξ_kb Ω
-@syms r(t)
 
-# Wholesale Branch Profit Function
-Profit = β_R^t * ((1 + R_b(t)) * b_T(t) - b_T(t+1) * π(t+1) -
-                  (1 + R_d(t)) * D_T(t) + D_T(t+1) * π(t+1) -
-                  (K_b(t+1) * π(t+1) - K_b(t)) -
-                  Adj_kb / 2 * ((k_b / b_T(t)) * K_b(t) - v_b)^2 * K_b(t))
+# Define parameters and variables
+@syms β_E a φ δ ξ_1 ξ_2 m_E
+@syms c_E(t) k_E(t) b_E(t) u(t) l_E(t) Y_E(t) A_E(t)
+@syms q_k(t) r_be(t) pi_var(t) X_t λ_E μ_E
 
-# Adjustment cost term
-Adj_kb_term = Adj_kb / 2 * ((k_b / b_T(t)) * K_b(t) - v_b)^2 * K_b(t)
+# Define utility function U_E
+U_E = β_E^t * log(c_E(t) - a * c_E(t - 1))
 
-# Capital/assets ratio constraint (Basel II)
-Basel_II_C = Adj_kb_term
+# Define utilization cost F(u)
+F_u = ξ_1 * (u(t) - 1) + 0.5 * ξ_2 * (u(t) - 1)^2
 
-# Balance sheet constraint
-Balance_Sheet_C = b_T(t) ~ D_T(t) + K_b(t) + ξ_kb
+# Define production function Y_E
+Y_E = A_E(t) * (u(t) * k_E(t-1))^φ * l_E(t)^(1 - φ)
 
-# Law of motion for bank capital
-Capital_LoM = K_b(t+1) * π(t+1) ~ (1 - δ_b) * K_b(t) + Ω * ξ_kb
+# Define budget constraint BC_E
+BC_E = Y_E / X_t + (1 + r_be(t-1)) / pi_var(t) * b_E(t-1) + q_k(t) * (1 - δ) * k_E(t-1) - (
+    c_E(t) + q_k(t) * k_E(t) + b_E(t) + F_u * k_E(t-1)
+)
 
-# Wholesale Interest Rate Constraint
-Interest_Rate_C = R_b(t) ~ r(t) - k_b * (k_b / b_T(t)) * (K_b(t) / b_T(t))^2
+# Define borrowing constraint Borrowing_C as equality (when binding)
+Borrowing_C = (1 + r_be(t)) * b_E(t) - m_E * q_k(t+1) * (1 - δ) * k_E(t) * pi_var(t+1)
 
-# Define the Lagrangian
-@syms λ_bs λ_lom λ_basel
-L_W = Profit +
-      λ_bs * (b_T(t) - (D_T(t) + K_b(t) + ξ_kb)) +
-      λ_lom * ((1 - δ_b) * K_b(t) + Ω * ξ_kb - K_b(t+1) * π(t+1)) +
-      λ_basel * Basel_II_C
+# Define the Lagrangian L_E
+L_E = U_E + λ_E * BC_E + μ_E * Borrowing_C
 
-# Compute FOCs
-FOC_b_T = expand_derivatives(Differential(b_T(t))(L_W))
-FOC_D_T = expand_derivatives(Differential(D_T(t))(L_W))
-FOC_K_b = expand_derivatives(Differential(K_b(t))(L_W))
+# Compute the FOCs by differentiating the Lagrangian
+FOC_c_E = expand_derivatives(Differential(c_E(t))(L_E)) ~ 0
+FOC_k_E = expand_derivatives(Differential(k_E(t))(L_E)) ~ 0
+FOC_u = expand_derivatives(Differential(u(t))(L_E)) ~ 0
+FOC_b_E = expand_derivatives(Differential(b_E(t))(L_E)) ~ 0
 
-# Display the FOCs
-println("Wholesale Branch's FOCs:")
+# Solve for λ_E from FOC_c_E
+λ_E_expr = symbolic_linear_solve(FOC_c_E, λ_E)
 
-println("\nFOC with respect to b_T(t) (Total loans):")
-display(FOC_b_T)
+# Substitute λ_E into FOC_k_E
+FOC_k_E_substituted = substitute(FOC_k_E, λ_E => λ_E_expr)
 
-println("\nFOC with respect to D_T(t) (Deposits):")
-display(FOC_D_T)
+# Solve for μ_E from FOC_b_E
+μ_E_expr = symbolic_linear_solve(FOC_b_E, μ_E)
 
-println("\nFOC with respect to K_b(t) (Bank capital):")
+# Substitute μ_E into FOC_k_E_substituted to eliminate both multipliers
+FOC_k_E_no_lagrange = substitute(FOC_k_E_substituted, μ_E => μ_E_expr)
+
+# Display Results
+println("FOC with respect to c_E(t) (Entrepreneurs):")
+display(FOC_c_E)
+
+println("\nFOC with respect to k_E(t) (Entrepreneurs):")
+display(FOC_k_E)
+
+println("\nFOC with respect to u(t) (Entrepreneurs):")
+display(FOC_u)
+
+println("\nFOC with respect to b_E(t) (Entrepreneurs):")
+display(FOC_b_E)
+
+println("\nSimplified FOC for k_E(t) without Lagrange multipliers:")
+display(FOC_k_E_no_lagrange)
+
+# Add analysis for binding/non-binding constraint
+println("\nWhen Borrowing Constraint is Binding (Active):")
+println("The borrowing constraint is treated as an equality.")
+
+println("\nWhen Borrowing Constraint is Not Binding (Inactive):")
+println("Set μ_E = 0 in the above equations.")
+
+#%% entrepreneurs linearize
+using Symbolics
+
+# Define variables and parameters
+@syms β_E a φ δ ξ_1 ξ_2 q_k(t) u(t) k_E(t) l_E(t) A_E(t) X_t c_E(t) b_E(t) r_be(t) λ_E μ_E m_E π_var(t)
+@syms c_E_ss k_E_ss u_ss q_k_ss b_E_ss l_E_ss r_be_ss π_var_ss λ_E_ss μ_E_ss A_E_ss X_ss  # Steady-state values
+@syms Δc_E Δk_E Δu Δq_k Δb_E Δl_E Δr_be Δπ_var ΔA_E ΔX  # Deviations from steady state
+
+# Define FOCs (Entrepreneurs)
+FOC_c_E = (β_E^t) / (c_E(t) - a * c_E(t-1)) - λ_E ~ 0
+FOC_k_E = -q_k(t) * λ_E + m_E * q_k(t+1) * π_var(t+1) * (-1 + δ) * μ_E ~ 0
+FOC_u = ((k_E(t-1) * (l_E(t)^(1 - φ)) * A_E(t) * ((k_E(t-1) * u(t))^(-1 + φ)) * φ) / X_t -
+         k_E(t-1) * (ξ_1 + (-1 + u(t)) * ξ_2)) * λ_E ~ 0
+FOC_b_E = -λ_E + (1 + r_be(t)) * μ_E ~ 0
+
+# Steady-state conditions (formatted as substitutions)
+steady_state_subs = Dict(
+    c_E(t) => c_E_ss,
+    k_E(t) => k_E_ss,
+    u(t) => u_ss,
+    q_k(t) => q_k_ss,
+    b_E(t) => b_E_ss,
+    l_E(t) => l_E_ss,
+    r_be(t) => r_be_ss,
+    π_var(t) => π_var_ss,
+    A_E(t) => A_E_ss,
+    X_t => X_ss,
+    λ_E => λ_E_ss,
+    μ_E => μ_E_ss
+)
+
+# Define linearized variables (formatted as substitutions)
+linearized_vars = Dict(
+    c_E(t) => c_E_ss * (1 + Δc_E),
+    k_E(t) => k_E_ss * (1 + Δk_E),
+    u(t) => u_ss * (1 + Δu),
+    q_k(t) => q_k_ss * (1 + Δq_k),
+    b_E(t) => b_E_ss * (1 + Δb_E),
+    l_E(t) => l_E_ss * (1 + Δl_E),
+    r_be(t) => r_be_ss * (1 + Δr_be),
+    π_var(t) => π_var_ss * (1 + Δπ_var),
+    A_E(t) => A_E_ss * (1 + ΔA_E),
+    X_t => X_ss * (1 + ΔX)
+)
+
+# Substitute steady state and deviations into FOCs
+FOC_c_E_linearized = substitute(FOC_c_E, steady_state_subs)
+FOC_c_E_linearized = substitute(FOC_c_E_linearized, linearized_vars)
+
+FOC_k_E_linearized = substitute(FOC_k_E, steady_state_subs)
+FOC_k_E_linearized = substitute(FOC_k_E_linearized, linearized_vars)
+
+FOC_u_linearized = substitute(FOC_u, steady_state_subs)
+FOC_u_linearized = substitute(FOC_u_linearized, linearized_vars)
+
+FOC_b_E_linearized = substitute(FOC_b_E, steady_state_subs)
+FOC_b_E_linearized = substitute(FOC_b_E_linearized, linearized_vars)
+
+# Simplify the linearized equations
+FOC_c_E_simplified = expand(FOC_c_E_linearized)
+FOC_k_E_simplified = expand(FOC_k_E_linearized)
+FOC_u_simplified = expand(FOC_u_linearized)
+FOC_b_E_simplified = expand(FOC_b_E_linearized)
+
+# Display Results
+println("Linearized FOC with respect to c_E(t) (Entrepreneurs):")
+display(FOC_c_E_simplified)
+
+println("\nLinearized FOC with respect to k_E(t) (Entrepreneurs):")
+display(FOC_k_E_simplified)
+
+println("\nLinearized FOC with respect to u(t) (Entrepreneurs):")
+display(FOC_u_simplified)
+
+println("\nLinearized FOC with respect to b_E(t) (Entrepreneurs):")
+display(FOC_b_E_simplified)
+
+
+
+
+#%%  Wholesale bankbranch
+using Symbolics
+
+# Define time variable
+@variables t
+
+# Define parameters and variables
+@syms β_R r k_b δ_b Ω v_b pi_var(t)
+@syms B_t(t) D_t(t) K_b(t) K_b_next(t) R_b(t) R_d(t) Adj_k(t) ε_b(t)
+
+# Define Lagrange multipliers
+@syms λ_bs λ_cap
+
+# Define adjustment cost for capital adequacy
+Adj_k = (k_b / 2) * ((K_b(t) / B_t(t)) - v_b)^2 * K_b(t)
+
+# Define the profit function for the wholesale branch
+Profit = β_R^t * ((1 + R_b(t)) * B_t(t) - B_t(t+1) * pi_var(t+1) -
+                  (1 + R_d(t)) * D_t(t) + D_t(t+1) * pi_var(t+1) -
+                  K_b_next(t) * pi_var(t+1) + K_b(t) - Adj_k)
+
+# Define the balance sheet constraint
+Balance_Sheet_C = B_t(t) - (D_t(t) + K_b(t) + ε_b(t))
+
+# Define the capital evolution constraint
+Capital_Evolution_C = K_b_next(t) * pi_var(t+1) - ((1 - δ_b) * K_b(t) + Ω * ε_b(t))
+
+# Define the Lagrangian L_W
+L_W = Profit + λ_bs * Balance_Sheet_C + λ_cap * Capital_Evolution_C
+
+# Compute the FOCs by differentiating the Lagrangian
+FOC_B_t = expand_derivatives(Differential(B_t(t))(L_W)) ~ 0
+FOC_D_t = expand_derivatives(Differential(D_t(t))(L_W)) ~ 0
+FOC_K_b = expand_derivatives(Differential(K_b(t))(L_W)) ~ 0
+
+# Solve for λ_bs from FOC_B_t
+λ_bs_expr = symbolic_linear_solve(FOC_B_t, λ_bs)
+
+# Solve for λ_cap from FOC_K_b
+λ_cap_expr = symbolic_linear_solve(FOC_K_b, λ_cap)
+
+# Substitute λ_bs into FOC_D_t
+FOC_D_t_substituted_bs = substitute(FOC_D_t, λ_bs => λ_bs_expr)
+
+# Substitute λ_cap into the result
+FOC_D_t_no_lagrange = substitute(FOC_D_t_substituted_bs, λ_cap => λ_cap_expr)
+
+# Display Results
+println("FOC with respect to B_t (Wholesale Branch):")
+display(FOC_B_t)
+
+println("\nFOC with respect to D_t (Wholesale Branch):")
+display(FOC_D_t)
+
+println("\nFOC with respect to K_b (Wholesale Branch):")
 display(FOC_K_b)
+
+println("\nSimplified FOC for D_t without Lagrange multipliers:")
+display(FOC_D_t_no_lagrange)
+
+# Add interpretation for binding constraints
+println("\nInterpretation:")
+println("The balance sheet and capital evolution constraints are always binding.")
+
+#%% wholesale branch linearize
+using Symbolics
+
+# Define variables and parameters
+@syms β_R R_b(t) R_d(t) v_b K_b(t) B_t(t) λ_bs λ_cap δ_b k_b
+@syms B_t_ss K_b_ss R_b_ss R_d_ss λ_bs_ss λ_cap_ss v_b_ss  # Steady-state values
+@syms ΔB_t ΔK_b ΔR_b ΔR_d  # Deviations from steady state
+
+# Define FOCs (Wholesale Branch)
+FOC_B_t = λ_bs + (1 + R_b(t) + k_b * (-v_b + K_b(t) / B_t(t)) * K_b(t) * (K_b(t) / (B_t(t)^2))) * (β_R^t) ~ 0
+FOC_D_t = -λ_bs + (-1 - R_d(t)) * (β_R^t) ~ 0
+FOC_K_b = -λ_bs + (-1 + δ_b) * λ_cap + (1 + (-k_b * (-v_b + K_b(t) / B_t(t)) * K_b(t)) / B_t(t) -
+             (1//2) * k_b * ((-v_b + K_b(t) / B_t(t))^2)) * (β_R^t) ~ 0
+
+# Steady-state conditions (formatted as substitutions)
+steady_state_subs = Dict(
+    B_t(t) => B_t_ss,
+    K_b(t) => K_b_ss,
+    R_b(t) => R_b_ss,
+    R_d(t) => R_d_ss,
+    λ_bs => λ_bs_ss,
+    λ_cap => λ_cap_ss
+)
+
+# Define linearized variables (formatted as substitutions)
+linearized_vars = Dict(
+    B_t(t) => B_t_ss * (1 + ΔB_t),          # Linearize B_t around steady state
+    K_b(t) => K_b_ss * (1 + ΔK_b),          # Linearize K_b around steady state
+    R_b(t) => R_b_ss * (1 + ΔR_b),          # Linearize R_b around steady state
+    R_d(t) => R_d_ss * (1 + ΔR_d)           # Linearize R_d around steady state
+)
+
+# Substitute steady state and deviations into FOCs
+FOC_B_t_linearized = substitute(FOC_B_t, steady_state_subs)
+FOC_B_t_linearized = substitute(FOC_B_t_linearized, linearized_vars)
+
+FOC_D_t_linearized = substitute(FOC_D_t, steady_state_subs)
+FOC_D_t_linearized = substitute(FOC_D_t_linearized, linearized_vars)
+
+FOC_K_b_linearized = substitute(FOC_K_b, steady_state_subs)
+FOC_K_b_linearized = substitute(FOC_K_b_linearized, linearized_vars)
+
+# Simplify the linearized equations
+FOC_B_t_simplified = expand(FOC_B_t_linearized)
+FOC_D_t_simplified = expand(FOC_D_t_linearized)
+FOC_K_b_simplified = expand(FOC_K_b_linearized)
+
+# Display Results
+println("Linearized FOC with respect to B_t (Wholesale Branch):")
+display(FOC_B_t_simplified)
+
+println("\nLinearized FOC with respect to D_t (Wholesale Branch):")
+display(FOC_D_t_simplified)
+
+println("\nLinearized FOC with respect to K_b (Wholesale Branch):")
+display(FOC_K_b_simplified)
+
 
 #%% retail branch 
 using Symbolics
 
-# Define callable variables
+# Define time variable
 @variables t
-@syms r_bn(t) r_bm(t) b_tn(t) b_tm(t) Adj_rbn(t) ε_bn(t) k_bn β_E λ_t λ_Loan
 
-# Retail Branch Objective Function
-Objective = r_bn(t) * b_tn(t) - r_bm(t) * b_tm(t) - Adj_rbn(t)
+# Define parameters and variables
+@syms β_E k_r r_t b_t_n_star ε_b_n(t)
+@syms r_b_n(t) b_t_n(t) r_b_e(t) b_t_e(t) R_b(t) B_t(t) Adj_r(t)
 
-# Demand Function for Loans
-Loan_Demand = b_tn(t) ~ (r_bn(t) / r_bm(t))^(-ε_bn(t)) * b_tm(t)
+# Define demand function for loans
+Loan_Demand = b_t_n(t) ~ (r_b_n(t) / r_t)^(-ε_b_n(t)) * b_t_n_star
 
-# Adjustment Cost on Retail Interest Rates
-Adj_Cost = k_bn / 2 * ((r_bn(t) / r_bm(t) - 1)^2) * b_tm(t)
+# Define adjustment cost
+Adj_r = (k_r / 2) * ((r_b_n(t) / r_t) - 1)^2 * r_b_n(t) * b_t_n(t)
 
-# Full Retail Branch Objective with Costs
-Full_Objective = β_E^t * (r_bn(t) * b_tn(t) - r_bm(t) * b_tm(t) - Adj_Cost)
+# Define profit function
+Profit = β_E^t * (r_b_n(t) * b_t_n(t) + r_b_e(t) * b_t_e(t) - R_b(t) * B_t(t) - Adj_r)
 
-# Define Lagrangian
-L_Retail = Full_Objective + λ_Loan * (b_tn(t) - (r_bn(t) / r_bm(t))^(-ε_bn(t)) * b_tm(t))
+# Define the Lagrangian
+@syms λ_loan
+L_Retail = Profit + λ_loan * (b_t_n(t) - (r_b_n(t) / r_t)^(-ε_b_n(t)) * b_t_n_star)
 
-# Compute FOCs for Retail Branch
-FOC_r_bn = expand_derivatives(Differential(r_bn(t))(L_Retail))
-FOC_b_tn = expand_derivatives(Differential(b_tn(t))(L_Retail))
-FOC_b_tm = expand_derivatives(Differential(b_tm(t))(L_Retail))
+# Compute FOCs by differentiating the Lagrangian
+FOC_r_b_n = expand_derivatives(Differential(r_b_n(t))(L_Retail)) ~ 0
+FOC_r_b_e = expand_derivatives(Differential(r_b_e(t))(L_Retail)) ~ 0
 
-# Solve for λ_Loan from the loan demand constraint
-λ_Loan_expr = symbolic_linear_solve(Loan_Demand, λ_Loan)
+# Solve for loan demand λ_loan
+λ_loan_expr = symbolic_linear_solve(FOC_r_b_n, λ_loan)
 
-# Substitute λ_Loan into FOCs
-FOC_r_bn_no_lambda = substitute(FOC_r_bn, λ_Loan => λ_Loan_expr) |> simplify
-FOC_b_tn_no_lambda = substitute(FOC_b_tn, λ_Loan => λ_Loan_expr) |> simplify
-FOC_b_tm_no_lambda = substitute(FOC_b_tm, λ_Loan => λ_Loan_expr) |> simplify
+# Substitute λ_loan into FOC_r_b_e to eliminate the multiplier
+FOC_r_b_e_no_lagrange = substitute(FOC_r_b_e, λ_loan => λ_loan_expr)
 
 # Display Results
-println("Retail Branch's FOCs:")
+println("FOC with respect to r_b_n(t) (Retail Branch):")
+display(FOC_r_b_n)
 
-println("\nFOC with respect to r_bn(t) (Retail interest rate):")
-display(FOC_r_bn_no_lambda)
+println("\nFOC with respect to r_b_e(t) (Retail Branch):")
+display(FOC_r_b_e)
 
-println("\nFOC with respect to b_tn(t) (Total loans by retail branch):")
-display(FOC_b_tn_no_lambda)
+println("\nSimplified FOC for r_b_e(t) without Lagrange multipliers:")
+display(FOC_r_b_e_no_lagrange)
 
-println("\nFOC with respect to b_tm(t) (Loan supply to retail branch):")
-display(FOC_b_tm_no_lambda)
+#%% retail branch linearirize 
+using Symbolics
+
+# Define variables and parameters
+@syms β_E r_b_n(t) r_b_e(t) r_t b_t_n_star b_t_n(t) b_t_e(t) ε_b_n(t) λ_loan k_r
+@syms r_b_n_ss r_b_e_ss r_t_ss b_t_n_ss b_t_e_ss ε_b_n_ss λ_loan_ss k_r_ss  # Steady-state values
+@syms Δr_b_n Δr_b_e Δr_t Δb_t_n Δb_t_e Δε_b_n Δλ_loan  # Deviations from steady state
+
+# Define FOCs (Retail Branch)
+FOC_r_b_n = (b_t_n_star * ((r_b_n(t) / r_t)^(-1 - ε_b_n(t))) * ε_b_n(t) * λ_loan) / r_t +
+            ((-k_r * r_b_n(t) * b_t_n(t) * (-1 + r_b_n(t) / r_t)) / r_t +
+             b_t_n(t) - (1//2) * k_r * b_t_n(t) * ((-1 + r_b_n(t) / r_t)^2)) * (β_E^t) ~ 0
+
+FOC_r_b_e = (β_E^t) * b_t_e(t) ~ 0
+
+# Steady-state conditions (formatted as substitutions)
+steady_state_subs = Dict(
+    r_b_n(t) => r_b_n_ss,
+    r_b_e(t) => r_b_e_ss,
+    r_t => r_t_ss,
+    b_t_n(t) => b_t_n_ss,
+    b_t_e(t) => b_t_e_ss,
+    ε_b_n(t) => ε_b_n_ss,
+    λ_loan => λ_loan_ss
+)
+
+# Define linearized variables (formatted as substitutions)
+linearized_vars = Dict(
+    r_b_n(t) => r_b_n_ss * (1 + Δr_b_n),        # Linearize r_b_n around steady state
+    r_b_e(t) => r_b_e_ss * (1 + Δr_b_e),        # Linearize r_b_e around steady state
+    r_t => r_t_ss * (1 + Δr_t),                 # Linearize r_t around steady state
+    b_t_n(t) => b_t_n_ss * (1 + Δb_t_n),        # Linearize b_t_n around steady state
+    b_t_e(t) => b_t_e_ss * (1 + Δb_t_e),        # Linearize b_t_e around steady state
+    ε_b_n(t) => ε_b_n_ss * (1 + Δε_b_n),        # Linearize ε_b_n around steady state
+    λ_loan => λ_loan_ss * (1 + Δλ_loan)         # Linearize λ_loan around steady state
+)
+
+# Substitute steady state and deviations into FOCs
+FOC_r_b_n_linearized = substitute(FOC_r_b_n, steady_state_subs)
+FOC_r_b_n_linearized = substitute(FOC_r_b_n_linearized, linearized_vars)
+
+FOC_r_b_e_linearized = substitute(FOC_r_b_e, steady_state_subs)
+FOC_r_b_e_linearized = substitute(FOC_r_b_e_linearized, linearized_vars)
+
+# Simplify the linearized equations
+FOC_r_b_n_simplified = expand(FOC_r_b_n_linearized)
+FOC_r_b_e_simplified = expand(FOC_r_b_e_linearized)
+
+# Display Results
+println("Linearized FOC with respect to r_b_n(t) (Retail Branch):")
+display(FOC_r_b_n_simplified)
+
+println("\nLinearized FOC with respect to r_b_e(t) (Retail Branch):")
+display(FOC_r_b_e_simplified)
 
 
 #%% wage
 using Symbolics
 
-# Define callable variables
-using Symbolics
 
-# Define variables and symbols
+# Define time variable
 @variables t
-@syms β_l W_L(t) P(t) l_i(t) k_w W_L_star(t) pi_var(t) pi_w_star(t) l_var(t)
-@syms ε_l φ λ_l m λ_d
 
-# Profit function for unions
-Profit = β_l^t * (
-    (W_L(t) / P(t)) * l_i(t) -
-    k_w / 2 * ((W_L(t) / W_L_star(t-1)) - pi_var(t-1) * pi_w_star(t))^2 * W_L(t) / P(t) -
-    (l_i(t)^(1+φ)) / (1+φ)
+# Define parameters and variables
+@syms β_L λ_L(t) k_w π_L(t) π_w(t) φ ε_L(t) l_t_star W_L(t) W_L_prev(t) P_t
+@syms l_t(i, m) i m
+
+# Define labor demand
+labor_demand = l_t(i, m) ~ (W_L(t) / W_L_prev(t))^(-ε_L(t)) * l_t_star
+
+# Define the profit function
+profit_function = β_L^t * λ_L(t) * (
+    (W_L(t) / P_t) * l_t(i, m) -
+    (k_w / 2) * ((W_L(t) / W_L_prev(t)) - π_L(t-1) * π_w(t))^2 * (W_L(t) / P_t) -
+    (l_t(i, m)^(1+φ)) / (1+φ)
 )
 
-# Labor demand
-Labor_Demand = l_i(t) ~ (W_L(t) / W_L_star(t-1))^(-ε_l) * l_var(t)
+# Define the Lagrangian
+@syms λ_d
+L_Labor = profit_function + λ_d * (l_t(i, m) - (W_L(t) / W_L_prev(t))^(-ε_L(t)) * l_t_star)
 
-# New Keynesian Phillips Curve for Wage Inflation
-NKPC = k_w * ((pi_w_star(t) / (pi_var(t-1) * pi_w_star(t))) - 1) * pi_w_star(t) ~
-    β_l * λ_l * (k_w * ((pi_w_star(t+1) / (pi_var(t) * pi_w_star(t+1))) - 1)^2 / pi_var(t+1)) +
-    (1 - ε_l) * l_i(t)^(1+φ) / λ_l
-
-# Define Lagrangian
-L_Labor = Profit + λ_d * (l_i(t) - (W_L(t) / W_L_star(t-1))^(-ε_l) * l_var(t))
-
-# Compute FOCs for the labor market
+# Compute the FOC by differentiating the Lagrangian with respect to W_L(t)
 FOC_W_L = expand_derivatives(Differential(W_L(t))(L_Labor))
-FOC_l_i = expand_derivatives(Differential(l_i(t))(L_Labor))
 
-# Solve for λ_d from the labor demand constraint
-λ_d_expr = symbolic_linear_solve(Labor_Demand, λ_d)
-
-# Substitute λ_d into FOCs
-FOC_W_L_no_lambda = substitute(FOC_W_L, λ_d => λ_d_expr) |> simplify
-FOC_l_i_no_lambda = substitute(FOC_l_i, λ_d => λ_d_expr) |> simplify
-
-# Simplify NKPC for cleaner display
-NKPC_simplified = simplify(NKPC)
+# Simplify the FOC by substituting labor demand
+FOC_W_L_simplified = substitute(FOC_W_L, l_t(i, m) => (W_L(t) / W_L_prev(t))^(-ε_L(t)) * l_t_star)
 
 # Display Results
-println("Labor Market's FOCs:")
+println("FOC with respect to W_L(t) (Nominal Wage):")
+display(FOC_W_L)
 
-println("\nFOC with respect to W_L(t) (Nominal wage):")
-display(FOC_W_L_no_lambda)
+println("\nSimplified FOC with labor demand substituted:")
+display(FOC_W_L_simplified)
 
-println("\nFOC with respect to l_i(t) (Labor supply):")
-display(FOC_l_i_no_lambda)
+%## wages
+using Symbolics
 
-println("\nNew Keynesian Phillips Curve for Wage Inflation:")
-display(NKPC_simplified)
+# Define variables and parameters
+@syms β_L W_L(t) W_L_prev(t) ε_L(t) π_w(t) π_L(t) k_w l_t_star l_t(i, m) P_t λ_d λ_L(t)
+@syms W_L_ss W_L_prev_ss ε_L_ss π_w_ss π_L_ss k_w_ss l_t_star_ss l_t_ss P_t_ss λ_d_ss λ_L_ss  # Steady-state values
+@syms ΔW_L ΔW_L_prev Δε_L Δπ_w Δπ_L Δl_t ΔP_t Δλ_d Δλ_L  # Deviations from steady state
+
+# Define FOC with respect to W_L(t)
+FOC_W_L = (l_t_star * ((W_L(t) / W_L_prev(t))^(-1 - ε_L(t))) * ε_L(t) * λ_d) / W_L_prev(t) +
+          (((-k_w * (W_L(t) / W_L_prev(t) - π_w(t) * π_L(t-1)) * W_L(t)) / W_L_prev(t) -
+            (1//2) * k_w * ((W_L(t) / W_L_prev(t) - π_w(t) * π_L(t-1))^2)) / P_t +
+           l_t(i, m) / P_t) * λ_L(t) * (β_L^t) ~ 0
+
+# Steady-state conditions (formatted as substitutions)
+steady_state_subs = Dict(
+    W_L(t) => W_L_ss,
+    W_L_prev(t) => W_L_prev_ss,
+    ε_L(t) => ε_L_ss,
+    π_w(t) => π_w_ss,
+    π_L(t-1) => π_L_ss,
+    l_t_star => l_t_star_ss,
+    l_t(i, m) => l_t_ss,
+    P_t => P_t_ss,
+    λ_d => λ_d_ss,
+    λ_L(t) => λ_L_ss
+)
+
+# Define linearized variables (formatted as substitutions)
+linearized_vars = Dict(
+    W_L(t) => W_L_ss * (1 + ΔW_L),
+    W_L_prev(t) => W_L_prev_ss * (1 + ΔW_L_prev),
+    ε_L(t) => ε_L_ss * (1 + Δε_L),
+    π_w(t) => π_w_ss * (1 + Δπ_w),
+    π_L(t-1) => π_L_ss * (1 + Δπ_L),
+    l_t(i, m) => l_t_ss * (1 + Δl_t),
+    P_t => P_t_ss * (1 + ΔP_t),
+    λ_d => λ_d_ss * (1 + Δλ_d),
+    λ_L(t) => λ_L_ss * (1 + Δλ_L)
+)
+
+# Substitute steady state and deviations into the FOC
+FOC_W_L_linearized = substitute(FOC_W_L, steady_state_subs)
+FOC_W_L_linearized = substitute(FOC_W_L_linearized, linearized_vars)
+
+# Simplify the linearized equation
+FOC_W_L_simplified = expand(FOC_W_L_linearized)
+
+# Display Results
+println("Linearized FOC with respect to W_L(t) (Nominal Wage):")
+display(FOC_W_L_simplified)
+
+    
 
 #%% Capital 
-using Symbolics
-
-# Define callable variables
 
 using Symbolics
 
-# Define variables
+# Define time variable
 @variables t
-@syms β_E λ_E q_k(t) i(t) i_E(t) k_i δ k(t) k_prev u(t) λ_C
 
-# Define the utility function
-Utility_Capital = β_E^t * λ_E * (q_k(t) * i(t) - k_i / 2 * (i_E(t) / k_prev - 1)^2 * i(t))
+# Define parameters and variables
+@syms β_E λ_E(t) k_i q_k(t) e_q(t) δ
+@syms i_t i_prev k_t k_prev λ_E_next q_k_next e_q_next
 
-# Define the constraint (law of motion of capital)
-Constraint_L = k(t) - (1 - δ) * k_prev - (1 - k_i / 2 * (i_E(t) / k_prev - 1)^2) * i(t) ~ 0
+# Utility function for capital producers
+Utility_Capital = λ_E(t) * β_E^t * (
+    q_k(t) * i_t - (k_i / 2) * ((i_t * e_q(t) / i_prev) - 1)^2 * i_t
+)
 
-# Define the Lagrangian
-L_Capital = Utility_Capital + λ_C * (k(t) - ((1 - δ) * k_prev + (1 - k_i / 2 * (i_E(t) / k_prev - 1)^2) * i(t)))
+# Price of capital equation
+Price_Capital = q_k(t) * (1 - (k_i / 2) * ((i_t * e_q(t) / i_prev) - 1)^2) +
+                k_i * (i_t * e_q(t) / i_prev) * ((i_t * e_q(t) / i_prev) - 1) +
+                β_E * (λ_E_next / λ_E(t)) * (q_k_next * e_q_next / i_t) ~ 1
 
-# Compute First-Order Conditions (FOCs)
-FOC_q_k = expand_derivatives(Differential(q_k(t))(L_Capital))  # FOC with respect to q_k(t)
-FOC_i = expand_derivatives(Differential(i(t))(L_Capital))      # FOC with respect to i(t)
+# Law of motion of capital
+Capital_Law = k_t ~ (1 - δ) * k_prev + (1 - (k_i / 2) * ((i_t * e_q(t) / i_prev) - 1)^2) * i_t
 
-# Solve for λ_C from the constraint
-λ_C_expr = symbolic_linear_solve(Constraint_L, λ_C)
+# Define the Lagrangian for capital producers
+@syms λ_C
+L_Capital = Utility_Capital + λ_C * (k_t - ((1 - δ) * k_prev + (1 - (k_i / 2) * ((i_t * e_q(t) / i_prev) - 1)^2) * i_t))
 
-# Substitute λ_C into FOCs and other equations
-FOC_q_k_no_lambda = substitute(FOC_q_k, λ_C => λ_C_expr)
-FOC_i_no_lambda = substitute(FOC_i, λ_C => λ_C_expr)
-
-# Simplify the expressions
-FOC_q_k_no_lambda = simplify(FOC_q_k_no_lambda)
-FOC_i_no_lambda = simplify(FOC_i_no_lambda)
-
-# Price of Capital Equation
-Price_Capital = simplify(q_k(t) * (1 - k_i / 2 * (i_E(t) / k_prev - 1)^2 + k_i * (i_E(t) / k_prev - 1) * (i_E(t) / k_prev)) +
-                β_E * (λ_E / λ_E) * (u(t+1) * q_k(t+1) * (1 + k_i * (i_E(t+1) / i(t) - 1)) / u(t)) ~ 1)
-
-# Law of Motion of Capital
-Capital_Law = simplify(k(t) ~ (1 - δ) * k_prev + (1 - k_i / 2 * (i_E(t) / k_prev - 1)^2) * i(t))
+# Compute first-order conditions (FOCs)
+FOC_q_k = expand_derivatives(Differential(q_k(t))(L_Capital))  # FOC w.r.t. q_k(t)
+FOC_i = expand_derivatives(Differential(i_t)(L_Capital))        # FOC w.r.t. i_t
 
 # Display Results
 println("Capital Producers' FOCs:")
 
 println("\nFOC with respect to q_k(t) (Price of capital):")
-display(FOC_q_k_no_lambda)
+display(FOC_q_k)
 
-println("\nFOC with respect to i(t) (Investment):")
-display(FOC_i_no_lambda)
+println("\nFOC with respect to i_t (Investment):")
+display(FOC_i)
 
 println("\nPrice of Capital Equation:")
 display(Price_Capital)
 
 println("\nLaw of Motion of Capital:")
 display(Capital_Law)
+
+#%% capital linearize it
+using Symbolics
+
+# Define variables and parameters
+@syms β_E λ_E(t) λ_C q_k(t) i_t e_q(t) i_prev k_i
+@syms q_k_ss i_t_ss e_q_ss i_prev_ss λ_E_ss λ_C_ss k_i_ss  # Steady-state values
+@syms Δq_k Δi_t Δe_q Δi_prev Δλ_E Δλ_C  # Deviations from steady state
+
+# Define FOCs
+FOC_q_k = i_t * (β_E^t) * λ_E(t) ~ 0
+FOC_i_t = (-1 + (i_t * k_i * (-1 + (i_t * e_q(t)) / i_prev) * e_q(t)) / i_prev +
+           (1//2) * k_i * ((-1 + (i_t * e_q(t)) / i_prev)^2)) * λ_C +
+          (q_k(t) + (-i_t * k_i * (-1 + (i_t * e_q(t)) / i_prev) * e_q(t)) / i_prev -
+           (1//2) * k_i * ((-1 + (i_t * e_q(t)) / i_prev)^2)) * (β_E^t) * λ_E(t) ~ 0
+
+# Steady-state conditions (formatted as substitutions)
+steady_state_subs = Dict(
+    q_k(t) => q_k_ss,
+    i_t => i_t_ss,
+    e_q(t) => e_q_ss,
+    i_prev => i_prev_ss,
+    λ_E(t) => λ_E_ss,
+    λ_C => λ_C_ss
+)
+
+# Define linearized variables (formatted as substitutions)
+linearized_vars = Dict(
+    q_k(t) => q_k_ss * (1 + Δq_k),
+    i_t => i_t_ss * (1 + Δi_t),
+    e_q(t) => e_q_ss * (1 + Δe_q),
+    i_prev => i_prev_ss * (1 + Δi_prev),
+    λ_E(t) => λ_E_ss * (1 + Δλ_E),
+    λ_C => λ_C_ss * (1 + Δλ_C)
+)
+
+# Substitute steady state and deviations into FOCs
+FOC_q_k_linearized = substitute(FOC_q_k, steady_state_subs)
+FOC_q_k_linearized = substitute(FOC_q_k_linearized, linearized_vars)
+
+FOC_i_t_linearized = substitute(FOC_i_t, steady_state_subs)
+FOC_i_t_linearized = substitute(FOC_i_t_linearized, linearized_vars)
+
+# Simplify the linearized equations
+FOC_q_k_simplified = expand(FOC_q_k_linearized)
+FOC_i_t_simplified = expand(FOC_i_t_linearized)
+
+# Display Results
+println("Linearized FOC with respect to q_k(t) (Price of capital):")
+display(FOC_q_k_simplified)
+
+println("\nLinearized FOC with respect to i_t (Investment):")
+display(FOC_i_t_simplified)
+
+#%% Final goods market 
+using Symbolics
+
+# Define time variable
+@variables t
+
+# Define parameters and callable variables
+@syms β_P λ_P(t) k_p π_t π_prev τ_p ν_p ε_y y_t y_t_j P_w
+@syms P_t(j) P_prev(j)  # Declare P_t and P_prev as callable
+@syms j  # Declare 'j' as a symbolic variable
+
+# Define the demand function for final goods
+Demand = y_t_j ~ (P_t(j) / P_t(t))^(-ε_y) * y_t
+
+# Define the profit function
+Profit = β_P^t * λ_P(t) * (
+    P_t(j) * y_t_j - P_w * y_t_j -
+    k_p * (P_t(j) / P_prev(j) - τ_p * π_prev^(1-ν_p))^2 * P_t(t) * y_t
+)
+
+# Define the Lagrangian
+@syms λ_d
+L_FinalGoods = Profit + λ_d * (y_t_j - (P_t(j) / P_t(t))^(-ε_y) * y_t)
+
+# Compute the FOC by differentiating the Lagrangian with respect to P_t(j)
+FOC_P_t_j = expand_derivatives(Differential(P_t(j))(L_FinalGoods))
+
+# Simplify the FOC by substituting the demand function
+FOC_P_t_j_simplified = substitute(FOC_P_t_j, y_t_j => (P_t(j) / P_t(t))^(-ε_y) * y_t)
+
+# Display Results
+println("FOC with respect to P_t(j) (Price of final good):")
+display(FOC_P_t_j)
+
+println("\nSimplified FOC with demand substituted:")
+display(FOC_P_t_j_simplified)
+
+#%%final goods 
+using Symbolics
+
+# Define variables and parameters
+@syms β_P P_t(j) P_t(t) P_prev(j) y_t y_t_j ε_y λ_d λ_P(t) k_p π_prev τ_p ν_p
+@syms P_t_ss P_prev_ss y_t_ss y_t_j_ss ε_y_ss λ_d_ss λ_P_ss π_prev_ss τ_p_ss k_p_ss ν_p_ss  # Steady-state values
+@syms ΔP_t ΔP_prev Δy_t Δy_t_j Δλ_d Δλ_P Δπ_prev  # Deviations from steady state
+
+# Define FOC with respect to P_t(j)
+FOC_P_t_j = (y_t * ((P_t(j) / P_t(t))^(-1 - ε_y)) * ε_y * λ_d) / P_t(t) +
+            (y_t_j + (-2 * k_p * y_t * P_t(t) * (P_t(j) / P_prev(j) - (π_prev^(1 - ν_p)) * τ_p)) / P_prev(j)) *
+            (β_P^t) * λ_P(t) ~ 0
+
+# Steady-state conditions (formatted as substitutions)
+steady_state_subs = Dict(
+    P_t(j) => P_t_ss,
+    P_t(t) => P_t_ss,
+    P_prev(j) => P_prev_ss,
+    y_t => y_t_ss,
+    y_t_j => y_t_j_ss,
+    ε_y => ε_y_ss,
+    λ_d => λ_d_ss,
+    λ_P(t) => λ_P_ss,
+    π_prev => π_prev_ss,
+    τ_p => τ_p_ss,
+    k_p => k_p_ss,
+    ν_p => ν_p_ss
+)
+
+# Define linearized variables (formatted as substitutions)
+linearized_vars = Dict(
+    P_t(j) => P_t_ss * (1 + ΔP_t),
+    P_t(t) => P_t_ss * (1 + ΔP_t),
+    P_prev(j) => P_prev_ss * (1 + ΔP_prev),
+    y_t => y_t_ss * (1 + Δy_t),
+    y_t_j => y_t_j_ss * (1 + Δy_t_j),
+    λ_d => λ_d_ss * (1 + Δλ_d),
+    λ_P(t) => λ_P_ss * (1 + Δλ_P),
+    π_prev => π_prev_ss * (1 + Δπ_prev)
+)
+
+# Substitute steady state and deviations into the FOC
+FOC_P_t_j_linearized = substitute(FOC_P_t_j, steady_state_subs)
+FOC_P_t_j_linearized = substitute(FOC_P_t_j_linearized, linearized_vars)
+
+# Simplify the linearized equation
+FOC_P_t_j_simplified = expand(FOC_P_t_j_linearized)
+
+# Display Results
+println("Linearized FOC with respect to P_t(j) (Price of final good):")
+display(FOC_P_t_j_simplified)
 
 
 #%%  dsge
