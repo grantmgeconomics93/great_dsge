@@ -329,6 +329,7 @@ test = filter(row -> row[:observation_date] >= start_date2 && row[:observation_d
 #%% Patient household 
 using Symbolics
 
+
 # Define time variable
 @variables t
 
@@ -346,7 +347,6 @@ BC_P = w_P(t) * l_P(t) + (1 + r(t - 1)) / pi_var(t) * d_P(t - 1) -
        (c_P(t) + q_h(t) * h_P(t) + d_P(t))
 
 # Define the Lagrangian L_P
-@syms λ_P
 L_P = U_P + λ_P * BC_P
 
 # Compute the FOCs
@@ -354,25 +354,30 @@ FOC_c_P = expand_derivatives(Differential(c_P(t))(L_P)) ~ 0
 FOC_h_P = expand_derivatives(Differential(h_P(t))(L_P)) ~ 0
 FOC_d_P = expand_derivatives(Differential(d_P(t))(L_P)) ~ 0
 
-# Solve for λ_P using the FOCs
+# Solve for λ_P using FOC_c_P
 λ_P_from_c_P = symbolic_linear_solve(FOC_c_P, λ_P)
-λ_P_from_h_P = symbolic_linear_solve(FOC_h_P, λ_P)
 
-# Substitute λ_P into the system to eliminate it
-FOC_h_P_no_lambda = substitute(λ_P_from_h_P, λ_P => λ_P_from_c_P)
+# Substitute λ_P into other FOCs
+FOC_h_P_no_lambda = substitute(FOC_h_P, λ_P => λ_P_from_c_P)
+FOC_d_P_no_lambda = substitute(FOC_d_P, λ_P => λ_P_from_c_P)
 
 # Display Results
-println("FOC with respect to c_P(t) (Patient households):")
+println("FOC with respect to c_P(t):")
 display(FOC_c_P)
 
-println("\nFOC with respect to h_P(t) (Patient households):")
+println("\nFOC with respect to h_P(t):")
 display(FOC_h_P)
 
-println("\nFOC with respect to d_P(t) (Patient households):")
+println("\nFOC with respect to d_P(t):")
 display(FOC_d_P)
 
-println("\nSimplified system without λ_P:")
+println("\nFOC with respect to h_P(t) without λ_P:")
 display(FOC_h_P_no_lambda)
+
+println("\nFOC with respect to d_P(t) without λ_P:")
+display(FOC_d_P_no_lambda)
+
+
 
 #%%linearize patient households
 using Symbolics
@@ -385,7 +390,7 @@ using Symbolics
 # Define FOCs (Simplified System)
 FOC_c_P = ((1 - a) * (β_P^t) * ε_z(t)) / (c_P(t) - a * c_P(t-1)) - λ_P_ss
 FOC_h_P = (β_P^t) * (ε_h(t) / h_P(t) - (h_P(t)^φ)) - q_h(t) * λ_P_ss
-FOC_d_P = -λ_P_ss
+
 
 # Steady-state conditions (formatted as substitutions)
 steady_state_subs = Dict(
@@ -427,7 +432,8 @@ display(FOC_d_P_simplified)
 
 
 #%% impaticent household 
-using Symbolics
+
+
 using Symbolics
 
 # Define time variable
@@ -456,24 +462,35 @@ FOC_c_I = expand_derivatives(Differential(c_I(t))(L_I)) ~ 0
 FOC_h_I = expand_derivatives(Differential(h_I(t))(L_I)) ~ 0
 FOC_b_I = expand_derivatives(Differential(b_I(t))(L_I)) ~ 0
 
-# Case 1: Borrowing Constraint is Binding
-println("\nCase 1: Borrowing Constraint is Binding (Active)")
-Borrowing_C_binding_rule = Dict(Borrowing_C => 0)  # Binding constraint as substitution rule
-FOC_b_I_binding = substitute(FOC_b_I, Borrowing_C_binding_rule)  # Substitute rule into FOC
-display(FOC_b_I_binding)
+# Solve for λ_I from FOC_c_I
+λ_I_from_c_I = symbolic_linear_solve(FOC_c_I, λ_I)
 
-# Case 2: Borrowing Constraint is Non-Binding
-println("\nCase 2: Borrowing Constraint is Non-Binding (Inactive)")
-μ_I_nonbinding_rule = Dict(μ_I => 0)  # Non-binding Lagrange multiplier as substitution rule
-FOC_b_I_nonbinding = substitute(FOC_b_I, μ_I_nonbinding_rule)  # Substitute rule into FOC
-display(FOC_b_I_nonbinding)
+# Substitute λ_I into other FOCs
+FOC_h_I_no_lambda = substitute(FOC_h_I, λ_I => λ_I_from_c_I)
+FOC_b_I_no_lambda = substitute(FOC_b_I, λ_I => λ_I_from_c_I)
+
+# Solve for μ_I from FOC_b_I (after λ_I elimination)
+μ_I_from_b_I = symbolic_linear_solve(FOC_b_I_no_lambda, μ_I)
+
+# Substitute μ_I into FOC_h_I_no_lambda
+FOC_h_I_no_lagrange = substitute(FOC_h_I_no_lambda, μ_I => μ_I_from_b_I)
 
 # Display Results
-println("\nFOC with respect to c_I(t):")
+println("FOC with respect to c_I(t):")
 display(FOC_c_I)
 
 println("\nFOC with respect to h_I(t):")
 display(FOC_h_I)
+
+println("\nFOC with respect to b_I(t):")
+display(FOC_b_I)
+
+println("\nFOC with respect to h_I(t) without λ_I and μ_I:")
+display(FOC_h_I_no_lagrange)
+
+println("\nFOC with respect to b_I(t) without λ_I and μ_I:")
+display(substitute(FOC_b_I_no_lambda, μ_I => μ_I_from_b_I))
+
 
 
 
@@ -539,7 +556,7 @@ display(FOC_h_I_simplified)
 println("\nLinearized FOC with respect to b_I(t) (Impatient households):")
 display(FOC_b_I_simplified)
 
-
+    
 
 #%% entrepreneurs 
 using Symbolics
@@ -577,29 +594,36 @@ FOC_u = expand_derivatives(Differential(u(t))(L_E)) ~ 0       # FOC wrt utilizat
 FOC_k_E = expand_derivatives(Differential(k_E(t))(L_E)) ~ 0   # FOC wrt capital
 FOC_b_E = expand_derivatives(Differential(b_E(t))(L_E)) ~ 0   # FOC wrt borrowing
 
+# Solve for λ_E from FOC_c_E
+λ_E_from_c_E = symbolic_linear_solve(FOC_c_E, λ_E)
+
+# Substitute λ_E into other FOCs
+FOC_u_no_lambda = substitute(FOC_u, λ_E => λ_E_from_c_E)
+FOC_k_E_no_lambda = substitute(FOC_k_E, λ_E => λ_E_from_c_E)
+FOC_b_E_no_lambda = substitute(FOC_b_E, λ_E => λ_E_from_c_E)
+
+# Solve for μ_E from FOC_b_E (after λ_E elimination)
+μ_E_from_b_E = symbolic_linear_solve(FOC_b_E_no_lambda, μ_E)
+
+# Substitute μ_E into the FOCs without λ_E
+FOC_u_no_lagrange = substitute(FOC_u_no_lambda, μ_E => μ_E_from_b_E)
+FOC_k_E_no_lagrange = substitute(FOC_k_E_no_lambda, μ_E => μ_E_from_b_E)
+
 # Display Results
 println("FOC with respect to c_E(t):")
 display(FOC_c_E)
 
-println("\nFOC with respect to u(t):")
-display(FOC_u)
+println("\nFOC with respect to u(t) without λ_E and μ_E:")
+display(FOC_u_no_lagrange)
 
-println("\nFOC with respect to k_E(t):")
-display(FOC_k_E)
+println("\nFOC with respect to k_E(t) without λ_E and μ_E:")
+display(FOC_k_E_no_lagrange)
 
-println("\nFOC with respect to b_E(t):")
-display(FOC_b_E)
-
-# Complementary Slackness Condition (Optional for Borrowing Constraint)
-Slackness_Condition = μ_E * Borrowing_C ~ 0  # μ_E ≥ 0 and Borrowing_C ≤ 0
-println("\nComplementary Slackness Condition:")
-display(Slackness_Condition)
+println("\nFOC with respect to b_E(t) without λ_E and μ_E:")
+display(substitute(FOC_b_E_no_lambda, μ_E => μ_E_from_b_E))
 
 
 
-
-
-#%% entrepreneurs linearize
 #%% Entrepreneurs Linearize
 using Symbolics
 
@@ -706,8 +730,8 @@ using Symbolics
 Adj_k = (k_b / 2) * ((K_b(t) / B_t(t)) - v_b)^2 * K_b(t)
 
 # Define the profit function for the wholesale branch
-Profit = β_R^t * ((1 + R_b(t)) * B_t(t) - B_t(t+1) * pi_var(t+1) -
-                  (1 + R_d(t)) * D_t(t) + D_t(t+1) * pi_var(t+1) -
+Profit = β_R^t * ((1 + R_b(t)) * B_t(t) - B_t(t+1) * pi_var(t+1) - 
+                  (1 + R_d(t)) * D_t(t) + D_t(t+1) * pi_var(t+1) - 
                   K_b_next(t) * pi_var(t+1) + K_b(t) - Adj_k)
 
 # Define the balance sheet constraint
@@ -725,16 +749,17 @@ FOC_D_t = expand_derivatives(Differential(D_t(t))(L_W)) ~ 0
 FOC_K_b = expand_derivatives(Differential(K_b(t))(L_W)) ~ 0
 
 # Solve for λ_bs from FOC_B_t
-λ_bs_expr = symbolic_linear_solve(FOC_B_t, λ_bs)
+λ_bs_from_B_t = symbolic_linear_solve(FOC_B_t, λ_bs)
 
-# Solve for λ_cap from FOC_K_b
-λ_cap_expr = symbolic_linear_solve(FOC_K_b, λ_cap)
+# Substitute λ_bs into other FOCs
+FOC_D_t_no_lambda_bs = substitute(FOC_D_t, λ_bs => λ_bs_from_B_t)
+FOC_K_b_no_lambda_bs = substitute(FOC_K_b, λ_bs => λ_bs_from_B_t)
 
-# Substitute λ_bs into FOC_D_t
-FOC_D_t_substituted_bs = substitute(FOC_D_t, λ_bs => λ_bs_expr)
+# Solve for λ_cap from FOC_K_b (after eliminating λ_bs)
+λ_cap_from_K_b = symbolic_linear_solve(FOC_K_b_no_lambda_bs, λ_cap)
 
-# Substitute λ_cap into the result
-FOC_D_t_no_lagrange = substitute(FOC_D_t_substituted_bs, λ_cap => λ_cap_expr)
+# Substitute λ_cap into the remaining FOC for D_t
+FOC_D_t_no_lagrange = substitute(FOC_D_t_no_lambda_bs, λ_cap => λ_cap_from_K_b)
 
 # Display Results
 println("FOC with respect to B_t (Wholesale Branch):")
@@ -749,9 +774,11 @@ display(FOC_K_b)
 println("\nSimplified FOC for D_t without Lagrange multipliers:")
 display(FOC_D_t_no_lagrange)
 
-# Add interpretation for binding constraints
-println("\nInterpretation:")
-println("The balance sheet and capital evolution constraints are always binding.")
+println("\nSimplified FOC for K_b without Lagrange multipliers:")
+display(substitute(FOC_K_b_no_lambda_bs, λ_cap => λ_cap_from_K_b))
+
+
+
 
 #%% wholesale branch linearize
 using Symbolics
@@ -838,10 +865,10 @@ L_Retail = Profit + λ_loan * (b_t_n(t) - (r_b_n(t) / r_t)^(-ε_b_n(t)) * b_t_n_
 FOC_r_b_n = expand_derivatives(Differential(r_b_n(t))(L_Retail)) ~ 0
 FOC_r_b_e = expand_derivatives(Differential(r_b_e(t))(L_Retail)) ~ 0
 
-# Solve for loan demand λ_loan
+# Step 1: Solve for λ_loan from FOC_r_b_n
 λ_loan_expr = symbolic_linear_solve(FOC_r_b_n, λ_loan)
 
-# Substitute λ_loan into FOC_r_b_e to eliminate the multiplier
+# Step 2: Substitute λ_loan into FOC_r_b_e to eliminate the multiplier
 FOC_r_b_e_no_lagrange = substitute(FOC_r_b_e, λ_loan => λ_loan_expr)
 
 # Display Results
@@ -853,6 +880,7 @@ display(FOC_r_b_e)
 
 println("\nSimplified FOC for r_b_e(t) without Lagrange multipliers:")
 display(FOC_r_b_e_no_lagrange)
+
 
 #%% retail branch linearirize 
 using Symbolics
@@ -1003,7 +1031,6 @@ display(FOC_W_L_simplified)
     
 
 #%% Capital 
-
 using Symbolics
 
 # Define time variable
@@ -1018,11 +1045,6 @@ Utility_Capital = λ_E(t) * β_E^t * (
     q_k(t) * i_t - (k_i / 2) * ((i_t * e_q(t) / i_prev) - 1)^2 * i_t
 )
 
-# Price of capital equation
-Price_Capital = q_k(t) * (1 - (k_i / 2) * ((i_t * e_q(t) / i_prev) - 1)^2) +
-                k_i * (i_t * e_q(t) / i_prev) * ((i_t * e_q(t) / i_prev) - 1) +
-                β_E * (λ_E_next / λ_E(t)) * (q_k_next * e_q_next / i_t) ~ 1
-
 # Law of motion of capital
 Capital_Law = k_t ~ (1 - δ) * k_prev + (1 - (k_i / 2) * ((i_t * e_q(t) / i_prev) - 1)^2) * i_t
 
@@ -1031,8 +1053,14 @@ Capital_Law = k_t ~ (1 - δ) * k_prev + (1 - (k_i / 2) * ((i_t * e_q(t) / i_prev
 L_Capital = Utility_Capital + λ_C * (k_t - ((1 - δ) * k_prev + (1 - (k_i / 2) * ((i_t * e_q(t) / i_prev) - 1)^2) * i_t))
 
 # Compute first-order conditions (FOCs)
-FOC_q_k = expand_derivatives(Differential(q_k(t))(L_Capital))  # FOC w.r.t. q_k(t)
-FOC_i = expand_derivatives(Differential(i_t)(L_Capital))        # FOC w.r.t. i_t
+FOC_q_k = expand_derivatives(Differential(q_k(t))(L_Capital)) ~ 0  # FOC w.r.t. q_k(t)
+FOC_i = expand_derivatives(Differential(i_t)(L_Capital)) ~ 0        # FOC w.r.t. i_t
+
+# Step 1: Solve for λ_C from FOC_q_k
+λ_C_expr = symbolic_linear_solve(FOC_q_k, λ_C)
+
+# Step 2: Substitute λ_C into FOC_i
+FOC_i_no_lagrange = substitute(FOC_i, λ_C => λ_C_expr)
 
 # Display Results
 println("Capital Producers' FOCs:")
@@ -1040,14 +1068,12 @@ println("Capital Producers' FOCs:")
 println("\nFOC with respect to q_k(t) (Price of capital):")
 display(FOC_q_k)
 
-println("\nFOC with respect to i_t (Investment):")
-display(FOC_i)
-
-println("\nPrice of Capital Equation:")
-display(Price_Capital)
+println("\nFOC with respect to i_t (Investment) without λ_C:")
+display(FOC_i_no_lagrange)
 
 println("\nLaw of Motion of Capital:")
 display(Capital_Law)
+
 
 #%% capital linearize it
 using Symbolics
@@ -1102,16 +1128,19 @@ display(FOC_q_k_simplified)
 println("\nLinearized FOC with respect to i_t (Investment):")
 display(FOC_i_t_simplified)
 
-#%% Final goods market 
+
+
+
+#%%finalgoods
 using Symbolics
 
 # Define time variable
 @variables t
 
-# Define parameters and callable variables
-@syms β_P λ_P(t) k_p π_t π_prev τ_p ν_p ε_y y_t y_t_j P_w
-@syms P_t(j) P_prev(j)  # Declare P_t and P_prev as callable
-@syms j  # Declare 'j' as a symbolic variable
+# Define parameters and variables
+@syms β_P λ_P(t) k_p π_t π_prev τ_p ν_p ε_y y_t P_w
+@syms P_t(j) P_prev(j)  # Declare P_t(j) and P_prev(j) as callable symbolic functions
+@syms j y_t_j λ_d  # Additional variables
 
 # Define the demand function for final goods
 Demand = y_t_j ~ (P_t(j) / P_t(t))^(-ε_y) * y_t
@@ -1119,25 +1148,35 @@ Demand = y_t_j ~ (P_t(j) / P_t(t))^(-ε_y) * y_t
 # Define the profit function
 Profit = β_P^t * λ_P(t) * (
     P_t(j) * y_t_j - P_w * y_t_j -
-    k_p * (P_t(j) / P_prev(j) - τ_p * π_prev^(1-ν_p))^2 * P_t(t) * y_t
+    k_p * (P_t(j) / P_prev(j) - τ_p * π_prev^(1 - ν_p))^2 * P_t(t) * y_t
 )
 
 # Define the Lagrangian
-@syms λ_d
 L_FinalGoods = Profit + λ_d * (y_t_j - (P_t(j) / P_t(t))^(-ε_y) * y_t)
 
 # Compute the FOC by differentiating the Lagrangian with respect to P_t(j)
-FOC_P_t_j = expand_derivatives(Differential(P_t(j))(L_FinalGoods))
+FOC_P_t_j = expand_derivatives(Differential(P_t(j))(L_FinalGoods)) ~ 0
 
-# Simplify the FOC by substituting the demand function
-FOC_P_t_j_simplified = substitute(FOC_P_t_j, y_t_j => (P_t(j) / P_t(t))^(-ε_y) * y_t)
+# Step 1: Solve for λ_d from the demand constraint
+λ_d_expr = symbolic_linear_solve(Demand, y_t_j)  # No need for [1]
+
+# Step 2: Substitute λ_d into the FOC to eliminate the multiplier
+FOC_P_t_j_no_lambda = substitute(FOC_P_t_j, λ_d => λ_d_expr)
+
+# Step 3: Simplify the resulting FOC
+FOC_P_t_j_simplified = simplify(FOC_P_t_j_no_lambda)
 
 # Display Results
 println("FOC with respect to P_t(j) (Price of final good):")
 display(FOC_P_t_j)
 
-println("\nSimplified FOC with demand substituted:")
+println("\nFOC with respect to P_t(j) after eliminating λ_d:")
+display(FOC_P_t_j_no_lambda)
+
+println("\nSimplified FOC without Lagrange multiplier:")
 display(FOC_P_t_j_simplified)
+
+
 
 #%%final goods 
 using Symbolics
@@ -1218,295 +1257,18 @@ observable_variables = approximation
 # Model Specification
 model = DSGE.Model()
 
-# Calibrated Parameters
-set_parameter!(model, :βP, 0.99250)   # Patient households discount factor
-set_parameter!(model, :βI, 0.97500)   # Impatient households discount factor
-set_parameter!(model, :βE, 0.97500)   # Entrepreneurs discount factor
-set_parameter!(model, :α, 0.33000)    # Capital share
-set_parameter!(model, :δ, 0.02500)    # Depreciation rate of physical capital
-set_parameter!(model, :ϕ, 1.00000)    # Inverse of Frisch elasticity
-set_parameter!(model, :mE, 0.50000)   # Loan-to-value for entrepreneurs
-set_parameter!(model, :mI, 0.75000)   # Loan-to-value for impatient households
-set_parameter!(model, :π̄, 1.00000)   # Net steady state inflation
-set_parameter!(model, :v_b, 0.11000)  # Basel II capital requirement
-set_parameter!(model, :Ω, 1.00000)    # Profits invested in new bank capital
-set_parameter!(model, :ε_be, 1.85000) # Markup over entrepreneurial loans
-set_parameter!(model, :ε_bh, 1.85000) # Markup over impatient households loans
-set_parameter!(model, :ε_y, 11.0000)  # Markup in the goods market
-set_parameter!(model, :ε_l, 6.00000)  # Markup in the labor market
-set_parameter!(model, :δ_b, 0.05070)  # Degree of utilization of bank capital
-set_parameter!(model, :ξ1, 0.05460)   # Coefficient for capital utilization
-set_parameter!(model, :ξ2, 0.00546)   # Coefficient for capital utilization
-set_parameter!(model, :j̄, 0.07500)   # Steady state value of housing consumption preference
 
-# Estimated Parameters (Posterior Modes)
-set_parameter!(model, :k_p, 135.5)    # Price stickiness
-set_parameter!(model, :k_bh, 24.65)   # H. loans adjustment cost
-set_parameter!(model, :k_be, 30.06)   # E. loans adjustment cost
-set_parameter!(model, :k_i, 12.46)    # Investment adjustment cost
-set_parameter!(model, :k_w, 101.4)    # Wage stickiness
-set_parameter!(model, :k_kb, 1.919)   # Capital requirement adjustment cost
-set_parameter!(model, :a, 0.762)      # Habit formation
-set_parameter!(model, :ι_w, 0.476)    # Wage indexation
-set_parameter!(model, :ι_p, 0.581)    # Price indexation
-set_parameter!(model, :ϕ_R, 0.808)    # Policy rate smoothing
-set_parameter!(model, :ϕ_π, 1.691)    # Inflation target
-set_parameter!(model, :ϕ_y, 0.402)    # Output gap
 
-# Additional Parameters (Need to initialize)
-set_parameter!(model, :κ, 0.5)        # Investment adjustment cost parameter
-set_parameter!(model, :ρ_A, 0.9)      # Persistence of technology shock
-set_parameter!(model, :ρ_εz, 0.9)     # Persistence of consumption preference shock
-set_parameter!(model, :ρ_εh, 0.9)     # Persistence of housing preference shock
-set_parameter!(model, :ρ_R, 0.9)      # Persistence of monetary policy shock
-set_parameter!(model, :λ_w, 0.5)      # Wage adjustment cost parameter
-set_parameter!(model, :κ_p, 0.1)      # Price adjustment parameter
 
-# Declare Variables
-declare_variables!(model, [
-    # Household variables
-    :cH_t, :cH_t_1, :hH_t, :lH_t, :λ_t, :ε_z_t, :ε_h_t,
-    # Patient household variables
-    :cP_t, :hP_t, :dP_t, :w_t, :lP_t, :r_t_1, :π_t, :dP_t_1,
-    # Impatient household variables
-    :cI_t, :hI_t, :bI_t, :mI_t, :q_h_t1, :π_t1, :r_bh_t,
-    # Entrepreneur variables
-    :cE_t, :lE_P_t, :lE_I_t, :r_be_t_1, :bE_t_1,
-    :q_k_t, :kE_t, :F_u_t, :kE_t_1, :yE_t, :x_t, :bE_t,
-    :u_t, :A_t_E, :lE_t, :i_t, :κ, :k_t, :k_t_1,
-    # Bank variables
-    :B_t, :D_t, :K_b_t, :Adj_kb_t, :λP_t, :R_t, :R_d_t,
-    # Policy variables
-    :r_t, :r̄, :π̄, :y_t, :y_t_1, :ε_R_t,
-    # Exogenous shocks
-    :A_t, :A_t_1, :ε_A_t, :ρ_A,
-    :ε_z_t, :ε_z_t_1, :ε_εz_t, :ρ_εz,
-    :ε_h_t, :ε_h_t_1, :ε_εh_t, :ρ_εh,
-    # Other variables
-    :mct, :λ_w, :π_t1, :ι_w, :ι_p,
-    # Total variables
-    :c_t, :h_t, :G_t, :Adj_t_j, :L_t,
-    # Marginal utilities
-    :λI_t,
-    # Include any other variables needed
-])
+#
 
 # Equations
 @equations model begin
 # Define the model equations
 @equations model begin
-    #################################
-    # 1. Labor Market Equations
-    #################################
+  
     
-    # Wage Phillips Curve (Equation 3)
-    kw * (π_ws_t - π_{w_{t-1}} * π_t^(1 - ω)) * π_ws_t ==
-        βP * E_t[ (λ_{t+1}^s / λ_t^s) * kw * (π_{ws_{t+1}} - π_w_t * π_{t+1}^{1 - ω}) * π_{ws_{t+1}} * (l_{t+1}^s / l_t^s) ] +
-        (1 - ε_t^l) * l_t^s + (ε_t^l * l_t^{1 + φ}) / (λ_t^s * w_t^s)
-    
-    # Definition of wage inflation (Equation 4)
-    π_ws_t == (w_t^s / w_{t-1}^s) * π_t
-    
-    # Labor Demand (Equation 2)
-    l_t^s(i, m) == ( (W_t^s(m) / W_{t-1}^s(m)) )^( - ε_t^l ) * l_t^s
-
-    #################################
-    # 2. Capital Producers Equations
-    #################################
-    
-    # Price of capital equation (Equation 6)
-    q_k_t * [ 1 - (ki / 2) * ( (i_t * e_k_t) / (i_{t-1} * e_{k_{t-1}}) - 1 )^2 ] +
-    ki * ( (i_t * e_k_t) / (i_{t-1} * e_{k_{t-1}}) - 1 ) * ( (i_t * e_k_t) / (i_{t-1} * e_{k_{t-1}}) ) +
-    βE * E_t[ (λ_{t+1}^E / λ_t^E) * ki * ( (i_{t+1} * e_{k_{t+1}}) / (i_t * e_k_t) - 1 ) *
-              ( (i_{t+1} * e_{k_{t+1}}) / (i_t * e_k_t) ) * q_{k_{t+1}} ] == 1
-    
-    # Law of motion of capital (Equation 7)
-    k_t == (1 - δ) * k_{t-1} + [ 1 - (ki / 2) * ( (i_t * e_k_t) / (i_{t-1} * e_{k_{t-1}}) - 1 )^2 ] * i_t
-    
-    #################################
-    # 3. Final Goods Producers Equations
-    #################################
-    
-    # New Keynesian Phillips Curve for price inflation (Equation 10)
-    (1 - ε_t^p) + ε_t^p * (P_t^w / P_t) -
-    kp * (π_t - π_{t-1}^p * π_t^{(1 - υ)}) * π_t +
-    βP * E_t[ (λ_{t+1}^P / λ_t^P) * kp * (π_{t+1} - π_t^p * π_{t+1}^{(1 - υ)}) * π_{t+1}^2 * (y_{t+1} / y_t) ] == 0
-    
-    # Demand Function for Final Goods (Equation 9)
-    y_t(j) == ( P_t(j) / P_t )^( - ε_t^p ) * y_t
-
-    #################################
-    # 4. Households Equations
-    #################################
-    
-    # Patient Households' Budget Constraint (Equation 2)
-    C_t^P + q_h_t * (H_t^P - H_{t-1}^P) + d_t^P ==
-        W_t^P * L_t^P + (1 + r_{t-1}) * (d_{t-1}^P / π_t)
-    
-    # Impatient Households' Budget Constraint (Equation 3)
-    C_t^I + q_h_t * (H_t^I - H_{t-1}^I) + (1 + r_{t-1}^{bH}) * (b_{t-1}^I / π_t) ==
-        W_t^I * L_t^I + b_t^I
-    
-    # Borrowing Constraint for Impatient Households (Equation 4)
-    (1 + r_t^{bH}) * b_t^I <= m_t^I * E_t[ q_h_{t+1} * H_{t+1}^I * π_{t+1} ]
-    
-    # Marginal Utility of Consumption for Patient Households
-    λ_t^P == (1 - α) * ε_t^c / (C_t^P - α * C_{t-1}^P)
-    
-    # Marginal Utility of Consumption for Impatient Households
-    λ_t^I == (1 - α) * ε_t^c / (C_t^I - α * C_{t-1}^I)
-    
-    #################################
-    # 5. Entrepreneurs Equations
-    #################################
-    
-    # Entrepreneurs' Budget Constraint (Equation 6)
-    C_t^E + W_t^P * L_t^{P,E} + W_t^I * L_t^{I,E} + (1 + r_{t-1}^E) * (b_{t-1}^E / π_t) +
-    q_k_t * k_t^E + F(u_t) * k_{t-1}^E ==
-        (y_t^E / χ_t) + b_t^E + q_k_t * (1 - δ) * k_{t-1}^E
-    
-    # Entrepreneurs' Production Function (Equation 7)
-    y_t^E == A_t^E * (k_{t-1}^E * u_t)^θ * (L_t^E)^(1 - α)
-    
-    # Borrowing Constraint for Entrepreneurs (Equation 8)
-    (1 + r_t^E) * b_t^E <= m_t^E * E_t[ q_{k_{t+1}} * (1 - δ) * k_t^E * π_{t+1} ]
-    
-    # Marginal Utility of Consumption for Entrepreneurs
-    λ_t^E == (1 - α) / (C_t^E - α * C_{t-1}^E)
-    
-    #################################
-    # 6. Wholesale Branch Equations
-    #################################
-    
-    # Capital Requirement Adjustment Cost (Equation 10)
-    Adj_kb_t == (k_bb / 2) * ( (K_b_t / B_t) - ν_b )^2
-    
-    # Balance Sheet Constraint (Equation 11)
-    B_t == D_t + K_b_t + ε_t^{kb}
-    
-    # Law of Motion for Bank Capital (Equation 12)
-    K_b_t * π_t == (1 - δ_b) * K_{b_{t-1}} + Ω * D_{t-1}
-    
-    # Wholesale Interest Rate (Equation 13)
-    R_t^B == r_t - k_bb * ( (K_b_t / B_t) - ν_b ) * (K_b_t / B_t)^2
-    
-    #################################
-    # 7. Retail Branch Equations
-    #################################
-    
-    # Demand Function for Loans (Equation 15)
-    b_t^n == ( R_t^{bn}(j) / R_t^{bn} )^( - ε_t^n ) * b_t^n_star  # Assuming b_t^n_star is the benchmark loan demand
-    
-    # Adjustment Cost on Commercial Interest Rates (Equation 16)
-    Adj_kn_t == (k_bn / 2) * ( (R_t^{bn} / R_{t-1}^{bn} - 1) )^2 * b_t^n
-    
-    # Interest Rate Setting Equation (Equation 17)
-  # Interest Rate Setting Equation (Equation 17)
- 1 - ε_t^n + ε_t^n * (R_t_bn / R_t^B) -
- k_bn * ( (R_t_bn / R_{t-1}_bn - 1) ) * (R_t_bn / R_{t-1}_bn ) +
- β * E_t[ (λI_{t+1} / λI_t) * k_bn * ( (R_{t+1}_bn / R_t_bn - 1) ) * (R_{t+1}_bn / R_t_bn )^2 * (b_{t+1}^n / b_t^n) ] == 0
-
-    
-    #################################
-    # 8. Monetary Policy Equation
-    #################################
-    
-    # Taylor Rule (Equation 18)
-    (1 + r_t) == (1 + r̄)^(1 - φ_r) * (1 + r_{t-1})^(φ_r) *
-                 (π_t / π̄)^(φ_π * (1 - φ_r)) *
-                 (y_t / y_{t-1})^(φ_y * (1 - φ_r)) *
-                 (1 + ε_t^R)
-    
-    #################################
-    # 9. Resource Constraint and Aggregation
-    #################################
-    
-    # Resource Constraint of the Economy (Equation 19)
-    y_t == c_t +
-           q_k_t * [ k_t - (1 - δ) * k_{t-1} ] +
-           k_{t-1} * [ ξ1 * (u_t - 1) + (ξ2 / 2) * (u_t - 1)^2 ] +
-           (δ_b * K_{b_{t-1}}) / π_t + G_t +
-           Adj_kb_t + Adj_kn_t + Adj_p_t + Adj_w_t  # Include all adjustment costs
-    
-    # Aggregate Consumption (Equation 20)
-    c_t == c_t^P + c_t^I + c_t^E + ε_t^c
-    
-    # Aggregate Housing (Equation 21)
-    h == h_t^P + h_t^I   # Assuming total housing supply h is normalized to 1
-    
-    # Capital Utilization Cost Function
-    F(u_t) == ξ1 * (u_t - 1) + (ξ2 / 2) * (u_t - 1)^2
-    
-    #################################
-    # 10. Additional Equations and Definitions
-    #################################
-    
-    # Marginal Cost
-    mct == P_t^w / P_t
-    
-    # Price Level Evolution
-    π_t == P_t / P_{t-1}
-    
-    # Aggregate Price Index (Definition)
-    # Assuming Calvo pricing is not used, so P_t evolves according to the price-setting behavior
-    # If needed, include an equation for P_t based on the model's specifics
-    
-    # Wage Index (Definition)
-    # Similar to the price index, define W_t if required
-    
-    # Definitions of Real Wages
-    w_t^P == W_t^P / P_t
-    w_t^I == W_t^I / P_t
-    w_t^s == W_t^s / P_t
-    
-    # Labor Market Clearing
-    L_t^P + L_t^I + L_t^E == L_t^s
-    
-    # Capital Market Clearing
-    k_t^E == k_t
-    
-    # Loan Market Clearing
-    b_t^I + b_t^E == B_t
-    
-    # Housing Market Clearing
-    H_t^P + H_t^I == h   # Total housing supply
-    
-    # Aggregate Output
-    y_t == y_t^E   # Assuming entrepreneurs produce the aggregate output
-    
-    # Real Estate Price Dynamics
-    # Include equations for q_h_t if applicable
-    
-    # Expectations Operator
-    # Ensure that E_t[...] is properly defined in your modeling framework
-    
-    # Exogenous Processes
-    # Preference Shock
-    ln(ε_t^c) == ρ_c * ln(ε_{t-1}^c) + ε_{c_t}
-    
-    # Housing Demand Shock
-    ln(ε_t^h) == ρ_h * ln(ε_{t-1}^h) + ε_{h_t}
-    
-    # Labor Supply Shock
-    ln(ε_t^l) == ρ_l * ln(ε_{t-1}^l) + ε_{l_t}
-    
-    # Price Markup Shock
-    ln(ε_t^p) == ρ_p * ln(ε_{t-1}^p) + ε_{p_t}
-    
-    # Monetary Policy Shock
-    ε_t^R == ρ_R * ε_{t-1}^R + ε_{R_t}
-    
-    # Total Factor Productivity Shock
-    ln(A_t^E) == ρ_A * ln(A_{t-1}^E) + ε_{A_t}
-    
-    # Loan-to-Value Ratios
-    ln(m_t^I) == (1 - ρ_mI) * ln(m̄_I) + ρ_mI * ln(m_{t-1}^I) + ε_{mI_t}
-    ln(m_t^E) == (1 - ρ_mE) * ln(m̄_E) + ρ_mE * ln(m_{t-1}^E) + ε_{mE_t}
-    
-    # Interest Rate Spread Shock
-    ln(ε_t^{kb}) == ρ_kb * ln(ε_{t-1}^{kb}) + ε_{kb_t}
-    
-    # ... Include any other exogenous processes as needed
+   
     
 end
 
@@ -1514,27 +1276,6 @@ end
    
 end
 
-# Prior Distributions for Estimated Parameters
-set_prior!(model, :k_p, Gamma(30, 20))
-set_prior!(model, :k_bh, Gamma(6, 2.5))
-set_prior!(model, :k_be, Gamma(3, 2.5))
-set_prior!(model, :k_i, Gamma(4.5, 2))
-set_prior!(model, :k_w, Gamma(80, 20))
-set_prior!(model, :k_kb, Gamma(10, 5))
-set_prior!(model, :a, Beta(0.5, 0.05))
-set_prior!(model, :ι_w, Beta(0.5, 0.05))
-set_prior!(model, :ι_p, Beta(0.5, 0.05))
-set_prior!(model, :ϕ_R, Beta(0.75, 0.05))
-set_prior!(model, :ϕ_π, Gamma(2.0, 0.1))
-set_prior!(model, :ϕ_y, Gamma(0.25, 0.05))
-# Set priors for new parameters if needed
-set_prior!(model, :κ, Gamma(4, 1))
-set_prior!(model, :ρ_A, Beta(0.5, 0.2))
-set_prior!(model, :ρ_εz, Beta(0.5, 0.2))
-set_prior!(model, :ρ_εh, Beta(0.5, 0.2))
-set_prior!(model, :ρ_R, Beta(0.5, 0.2))
-set_prior!(model, :λ_w, Gamma(2, 0.5))
-set_prior!(model, :κ_p, Gamma(0.1, 0.05))
 
 # Initial Values for Parameters (Posterior Modes)
 # (Already set above)
