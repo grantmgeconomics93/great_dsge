@@ -357,25 +357,34 @@ FOC_d_P = expand_derivatives(Differential(d_P(t))(L_P)) ~ 0
 # Solve for λ_P using FOC_c_P
 λ_P_from_c_P = symbolic_linear_solve(FOC_c_P, λ_P)
 
-# Substitute λ_P into other FOCs
-FOC_h_P_no_lambda = substitute(FOC_h_P, λ_P => λ_P_from_c_P)
-FOC_d_P_no_lambda = substitute(FOC_d_P, λ_P => λ_P_from_c_P)
+# Substitute λ_P into other FOCs from FOC_c_P
+FOC_h_P_no_lambda_from_c_P = substitute(FOC_h_P, λ_P => λ_P_from_c_P)
+FOC_d_P_no_lambda_from_c_P = substitute(FOC_d_P, λ_P => λ_P_from_c_P)
+
+# Solve for λ_P using FOC_h_P
+λ_P_from_h_P = symbolic_linear_solve(FOC_h_P, λ_P)
+
+# Substitute λ_P into other FOCs from FOC_h_P
+FOC_c_P_no_lambda_from_h_P = substitute(FOC_c_P, λ_P => λ_P_from_h_P)
+FOC_d_P_no_lambda_from_h_P = substitute(FOC_d_P, λ_P => λ_P_from_h_P)
 
 # Display Results
-println("FOC with respect to c_P(t):")
-display(FOC_c_P)
 
-println("\nFOC with respect to h_P(t):")
-display(FOC_h_P)
 
-println("\nFOC with respect to d_P(t):")
-display(FOC_d_P)
+println("\nFOC with respect to h_P(t) without λ_P (from FOC_c_P):")
+display(FOC_h_P_no_lambda_from_c_P)
 
-println("\nFOC with respect to h_P(t) without λ_P:")
-display(FOC_h_P_no_lambda)
+println("\nFOC with respect to d_P(t) without λ_P (from FOC_c_P):")
+display(FOC_d_P_no_lambda_from_c_P)
 
-println("\nFOC with respect to d_P(t) without λ_P:")
-display(FOC_d_P_no_lambda)
+
+
+println("\nFOC with respect to c_P(t) without λ_P (from FOC_h_P):")
+display(FOC_c_P_no_lambda_from_h_P)
+
+println("\nFOC with respect to d_P(t) without λ_P (from FOC_h_P):")
+display(FOC_d_P_no_lambda_from_h_P)
+
 
 
 
@@ -465,15 +474,22 @@ FOC_b_I = expand_derivatives(Differential(b_I(t))(L_I)) ~ 0
 # Solve for λ_I from FOC_c_I
 λ_I_from_c_I = symbolic_linear_solve(FOC_c_I, λ_I)
 
-# Substitute λ_I into other FOCs
+# Substitute λ_I into FOC_h_I and FOC_b_I
 FOC_h_I_no_lambda = substitute(FOC_h_I, λ_I => λ_I_from_c_I)
 FOC_b_I_no_lambda = substitute(FOC_b_I, λ_I => λ_I_from_c_I)
 
-# Solve for μ_I from FOC_b_I (after λ_I elimination)
+# Solve for μ_I from FOC_b_I_no_lambda
 μ_I_from_b_I = symbolic_linear_solve(FOC_b_I_no_lambda, μ_I)
 
-# Substitute μ_I into FOC_h_I_no_lambda
+# Substitute μ_I into FOC_h_I_no_lambda to eliminate both Lagrange multipliers
 FOC_h_I_no_lagrange = substitute(FOC_h_I_no_lambda, μ_I => μ_I_from_b_I)
+
+# Substitute μ_I into FOC_c_I_no_lambda to eliminate both Lagrange multipliers
+FOC_c_I_no_lambda = substitute(FOC_c_I, λ_I => λ_I_from_c_I)  # Eliminate λ_I
+FOC_c_I_no_lagrange = substitute(FOC_c_I_no_lambda, μ_I => μ_I_from_b_I)
+
+# Substitute μ_I into FOC_b_I_no_lambda to eliminate both Lagrange multipliers
+FOC_b_I_no_lagrange = substitute(FOC_b_I_no_lambda, μ_I => μ_I_from_b_I)
 
 # Display Results
 println("FOC with respect to c_I(t):")
@@ -485,11 +501,16 @@ display(FOC_h_I)
 println("\nFOC with respect to b_I(t):")
 display(FOC_b_I)
 
+println("\nFOC with respect to c_I(t) without λ_I and μ_I:")
+display(FOC_c_I_no_lagrange)
+
 println("\nFOC with respect to h_I(t) without λ_I and μ_I:")
 display(FOC_h_I_no_lagrange)
 
 println("\nFOC with respect to b_I(t) without λ_I and μ_I:")
-display(substitute(FOC_b_I_no_lambda, μ_I => μ_I_from_b_I))
+display(FOC_b_I_no_lagrange)
+
+
 
 
 
@@ -585,33 +606,44 @@ BC_E = Y_E / X_t + (1 + r_be(t-1)) / pi_var(t) * b_E(t-1) + q_k(t) * (1 - δ) * 
 Borrowing_C = (1 + r_be(t)) * b_E(t) - m_E * q_k(t+1) * (1 - δ) * k_E(t) * pi_var(t+1)
 
 # Define Lagrangian
+# Define the Lagrange multipliers and constraints
 @syms λ_E μ_E  # Lagrange multipliers
+
+# Define the Lagrangian
 L_E = U_E + λ_E * BC_E + μ_E * Borrowing_C
 
-# First-Order Conditions (FOCs)
+# Compute the First-Order Conditions (FOCs)
 FOC_c_E = expand_derivatives(Differential(c_E(t))(L_E)) ~ 0  # FOC wrt consumption
 FOC_u = expand_derivatives(Differential(u(t))(L_E)) ~ 0       # FOC wrt utilization
 FOC_k_E = expand_derivatives(Differential(k_E(t))(L_E)) ~ 0   # FOC wrt capital
 FOC_b_E = expand_derivatives(Differential(b_E(t))(L_E)) ~ 0   # FOC wrt borrowing
 
-# Solve for λ_E from FOC_c_E
+# Step 1: Solve for λ_E from FOC_c_E
 λ_E_from_c_E = symbolic_linear_solve(FOC_c_E, λ_E)
 
-# Substitute λ_E into other FOCs
+# Step 2: Substitute λ_E into the other FOCs
 FOC_u_no_lambda = substitute(FOC_u, λ_E => λ_E_from_c_E)
 FOC_k_E_no_lambda = substitute(FOC_k_E, λ_E => λ_E_from_c_E)
 FOC_b_E_no_lambda = substitute(FOC_b_E, λ_E => λ_E_from_c_E)
 
-# Solve for μ_E from FOC_b_E (after λ_E elimination)
+# Step 3: Solve for μ_E from FOC_b_E_no_lambda
 μ_E_from_b_E = symbolic_linear_solve(FOC_b_E_no_lambda, μ_E)
 
-# Substitute μ_E into the FOCs without λ_E
+# Step 4: Substitute μ_E into the other FOCs without λ_E
 FOC_u_no_lagrange = substitute(FOC_u_no_lambda, μ_E => μ_E_from_b_E)
 FOC_k_E_no_lagrange = substitute(FOC_k_E_no_lambda, μ_E => μ_E_from_b_E)
+FOC_b_E_no_lagrange = substitute(FOC_b_E_no_lambda, μ_E => μ_E_from_b_E)
+
+# Step 5: Eliminate λ_E and μ_E from FOC_c_E itself
+FOC_c_E_no_lambda = substitute(FOC_c_E, λ_E => λ_E_from_c_E)  # Eliminate λ_E
+FOC_c_E_no_lagrange = substitute(FOC_c_E_no_lambda, μ_E => μ_E_from_b_E)  # Eliminate μ_E
 
 # Display Results
 println("FOC with respect to c_E(t):")
 display(FOC_c_E)
+
+println("\nFOC with respect to c_E(t) without λ_E and μ_E:")
+display(FOC_c_E_no_lagrange)
 
 println("\nFOC with respect to u(t) without λ_E and μ_E:")
 display(FOC_u_no_lagrange)
@@ -620,7 +652,8 @@ println("\nFOC with respect to k_E(t) without λ_E and μ_E:")
 display(FOC_k_E_no_lagrange)
 
 println("\nFOC with respect to b_E(t) without λ_E and μ_E:")
-display(substitute(FOC_b_E_no_lambda, μ_E => μ_E_from_b_E))
+display(FOC_b_E_no_lagrange)
+
 
 
 
@@ -744,38 +777,48 @@ Capital_Evolution_C = K_b_next(t) * pi_var(t+1) - ((1 - δ_b) * K_b(t) + Ω * ε
 L_W = Profit + λ_bs * Balance_Sheet_C + λ_cap * Capital_Evolution_C
 
 # Compute the FOCs by differentiating the Lagrangian
-FOC_B_t = expand_derivatives(Differential(B_t(t))(L_W)) ~ 0
-FOC_D_t = expand_derivatives(Differential(D_t(t))(L_W)) ~ 0
-FOC_K_b = expand_derivatives(Differential(K_b(t))(L_W)) ~ 0
+FOC_B_t = expand_derivatives(Differential(B_t(t))(L_W)) ~ 0  # FOC wrt B_t
+FOC_D_t = expand_derivatives(Differential(D_t(t))(L_W)) ~ 0  # FOC wrt D_t
+FOC_K_b = expand_derivatives(Differential(K_b(t))(L_W)) ~ 0  # FOC wrt K_b
 
-# Solve for λ_bs from FOC_B_t
+# Step 1: Solve for λ_bs from FOC_B_t
 λ_bs_from_B_t = symbolic_linear_solve(FOC_B_t, λ_bs)
 
-# Substitute λ_bs into other FOCs
+# Step 2: Substitute λ_bs into FOC_D_t and FOC_K_b
 FOC_D_t_no_lambda_bs = substitute(FOC_D_t, λ_bs => λ_bs_from_B_t)
 FOC_K_b_no_lambda_bs = substitute(FOC_K_b, λ_bs => λ_bs_from_B_t)
 
-# Solve for λ_cap from FOC_K_b (after eliminating λ_bs)
+# Step 3: Solve for λ_cap from FOC_K_b_no_lambda_bs
 λ_cap_from_K_b = symbolic_linear_solve(FOC_K_b_no_lambda_bs, λ_cap)
 
-# Substitute λ_cap into the remaining FOC for D_t
+# Step 4: Substitute λ_cap into FOC_D_t_no_lambda_bs to eliminate both Lagrange multipliers
 FOC_D_t_no_lagrange = substitute(FOC_D_t_no_lambda_bs, λ_cap => λ_cap_from_K_b)
+
+# Step 5: Eliminate λ_bs and λ_cap from FOC_B_t itself
+FOC_B_t_no_lambda = substitute(FOC_B_t, λ_bs => λ_bs_from_B_t)  # Eliminate λ_bs
+FOC_B_t_no_lagrange = substitute(FOC_B_t_no_lambda, λ_cap => λ_cap_from_K_b)  # Eliminate λ_cap
+
+# Step 6: Eliminate λ_cap from FOC_K_b_no_lambda_bs
+FOC_K_b_no_lagrange = substitute(FOC_K_b_no_lambda_bs, λ_cap => λ_cap_from_K_b)
 
 # Display Results
 println("FOC with respect to B_t (Wholesale Branch):")
 display(FOC_B_t)
 
+println("\nFOC with respect to B_t without λ_bs and λ_cap:")
+display(FOC_B_t_no_lagrange)
+
 println("\nFOC with respect to D_t (Wholesale Branch):")
 display(FOC_D_t)
+
+println("\nFOC with respect to D_t without λ_bs and λ_cap:")
+display(FOC_D_t_no_lagrange)
 
 println("\nFOC with respect to K_b (Wholesale Branch):")
 display(FOC_K_b)
 
-println("\nSimplified FOC for D_t without Lagrange multipliers:")
-display(FOC_D_t_no_lagrange)
-
-println("\nSimplified FOC for K_b without Lagrange multipliers:")
-display(substitute(FOC_K_b_no_lambda_bs, λ_cap => λ_cap_from_K_b))
+println("\nFOC with respect to K_b without λ_bs and λ_cap:")
+display(FOC_K_b_no_lagrange)
 
 
 
@@ -839,14 +882,11 @@ display(FOC_K_b_simplified)
 
 
 #%% retail branch 
+
 using Symbolics
 
-# Define time variable
-@variables t
-
-# Define parameters and variables
-@syms β_E k_r r_t b_t_n_star ε_b_n(t)
-@syms r_b_n(t) b_t_n(t) r_b_e(t) b_t_e(t) R_b(t) B_t(t) Adj_r(t)
+# Define all necessary symbolic variables
+@syms t b_t_n(t) r_b_n(t) r_t ε_b_n(t) b_t_n_star r_b_e(t) β_E b_t_e(t) R_b(t) B_t(t) k_r λ_loan
 
 # Define demand function for loans
 Loan_Demand = b_t_n(t) ~ (r_b_n(t) / r_t)^(-ε_b_n(t)) * b_t_n_star
@@ -858,28 +898,35 @@ Adj_r = (k_r / 2) * ((r_b_n(t) / r_t) - 1)^2 * r_b_n(t) * b_t_n(t)
 Profit = β_E^t * (r_b_n(t) * b_t_n(t) + r_b_e(t) * b_t_e(t) - R_b(t) * B_t(t) - Adj_r)
 
 # Define the Lagrangian
-@syms λ_loan
 L_Retail = Profit + λ_loan * (b_t_n(t) - (r_b_n(t) / r_t)^(-ε_b_n(t)) * b_t_n_star)
 
 # Compute FOCs by differentiating the Lagrangian
-FOC_r_b_n = expand_derivatives(Differential(r_b_n(t))(L_Retail)) ~ 0
-FOC_r_b_e = expand_derivatives(Differential(r_b_e(t))(L_Retail)) ~ 0
+FOC_r_b_n = expand_derivatives(Differential(r_b_n(t))(L_Retail)) ~ 0  # FOC wrt r_b_n
+FOC_r_b_e = expand_derivatives(Differential(r_b_e(t))(L_Retail)) ~ 0  # FOC wrt r_b_e
+FOC_b_t_n = expand_derivatives(Differential(b_t_n(t))(L_Retail)) ~ 0  # FOC wrt b_t_n
 
 # Step 1: Solve for λ_loan from FOC_r_b_n
 λ_loan_expr = symbolic_linear_solve(FOC_r_b_n, λ_loan)
 
-# Step 2: Substitute λ_loan into FOC_r_b_e to eliminate the multiplier
-FOC_r_b_e_no_lagrange = substitute(FOC_r_b_e, λ_loan => λ_loan_expr)
+# Step 2: Substitute λ_loan into the other FOCs
+FOC_r_b_e_no_lambda = substitute(FOC_r_b_e, λ_loan => λ_loan_expr)
+FOC_b_t_n_no_lambda = substitute(FOC_b_t_n, λ_loan => λ_loan_expr)
 
 # Display Results
-println("FOC with respect to r_b_n(t) (Retail Branch):")
+println("FOC with respect to r_b_n (Retail Branch):")
 display(FOC_r_b_n)
 
-println("\nFOC with respect to r_b_e(t) (Retail Branch):")
+println("\nFOC with respect to b_t_n (Retail Branch):")
+display(FOC_b_t_n)
+
+println("\nFOC with respect to r_b_e (Retail Branch):")
 display(FOC_r_b_e)
 
-println("\nSimplified FOC for r_b_e(t) without Lagrange multipliers:")
-display(FOC_r_b_e_no_lagrange)
+println("\nFOC with respect to r_b_e without λ_loan:")
+display(FOC_r_b_e_no_lambda)
+
+println("\nFOC with respect to b_t_n without λ_loan:")
+display(FOC_b_t_n_no_lambda)
 
 
 #%% retail branch linearirize 
@@ -943,11 +990,9 @@ using Symbolics
 
 
 # Define time variable
-@variables t
-
 # Define parameters and variables
 @syms β_L λ_L(t) k_w π_L(t) π_w(t) φ ε_L(t) l_t_star W_L(t) W_L_prev(t) P_t
-@syms l_t(i, m) i m
+@syms l_t(i, m) i m λ_d
 
 # Define labor demand
 labor_demand = l_t(i, m) ~ (W_L(t) / W_L_prev(t))^(-ε_L(t)) * l_t_star
@@ -960,21 +1005,37 @@ profit_function = β_L^t * λ_L(t) * (
 )
 
 # Define the Lagrangian
-@syms λ_d
 L_Labor = profit_function + λ_d * (l_t(i, m) - (W_L(t) / W_L_prev(t))^(-ε_L(t)) * l_t_star)
 
 # Compute the FOC by differentiating the Lagrangian with respect to W_L(t)
-FOC_W_L = expand_derivatives(Differential(W_L(t))(L_Labor))
+FOC_W_L = expand_derivatives(Differential(W_L(t))(L_Labor)) ~ 0
+
+# Compute the FOC by differentiating with respect to l_t(i, m) to solve for λ_d
+FOC_l_t = expand_derivatives(Differential(l_t(i, m))(L_Labor)) ~ 0
+
+# Step 1: Solve for λ_d from FOC_l_t
+λ_d_expr = symbolic_linear_solve(FOC_l_t, λ_d)
+
+# Step 2: Substitute λ_d into FOC_W_L to eliminate the Lagrange multiplier
+FOC_W_L_no_lagrange = substitute(FOC_W_L, λ_d => λ_d_expr)
 
 # Simplify the FOC by substituting labor demand
-FOC_W_L_simplified = substitute(FOC_W_L, l_t(i, m) => (W_L(t) / W_L_prev(t))^(-ε_L(t)) * l_t_star)
+FOC_W_L_simplified = substitute(FOC_W_L_no_lagrange, l_t(i, m) => (W_L(t) / W_L_prev(t))^(-ε_L(t)) * l_t_star)
 
 # Display Results
 println("FOC with respect to W_L(t) (Nominal Wage):")
 display(FOC_W_L)
 
+println("\nFOC with respect to l_t(i, m):")
+display(FOC_l_t)
+
+println("\nFOC with respect to W_L(t) without Lagrange multiplier:")
+display(FOC_W_L_no_lagrange)
+
 println("\nSimplified FOC with labor demand substituted:")
 display(FOC_W_L_simplified)
+
+
 
 %## wages
 using Symbolics
