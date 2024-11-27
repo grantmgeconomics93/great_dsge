@@ -84,7 +84,7 @@ try
 catch e
     println("Error loading inflation.xlsx: ", e)
 end
-
+    
 # Load "moodyCorporateBondYield.xlsx"
 try
     global moodyCorporateBondYield = XLSX.readtable("moodyCorporateBondYield.xlsx", 1) |> DataFrame
@@ -389,55 +389,8 @@ display(FOC_d_P_no_lambda_from_h_P)
 
 
 #%%linearize patient households
-using Symbolics
-
-# Define variables and parameters
-@syms β_P ε_z(t) ε_h(t) φ a q_h(t) h_P(t) c_P(t) d_P(t)
-@syms c_P_ss h_P_ss q_h_ss d_P_ss ε_z_ss ε_h_ss λ_P_ss  # Steady-state values
-@syms Δc_P Δh_P Δq_h Δd_P  # Deviations from steady state
-
-# Define FOCs (Simplified System)
-FOC_c_P = ((1 - a) * (β_P^t) * ε_z(t)) / (c_P(t) - a * c_P(t-1)) - λ_P_ss
-FOC_h_P = (β_P^t) * (ε_h(t) / h_P(t) - (h_P(t)^φ)) - q_h(t) * λ_P_ss
 
 
-# Steady-state conditions (formatted as substitutions)
-steady_state_subs = Dict(
-    ε_z(t) => ε_z_ss,
-    ε_h(t) => ε_h_ss,
-    c_P(t) => c_P_ss,
-    h_P(t) => h_P_ss,
-    q_h(t) => q_h_ss,
-    d_P(t) => d_P_ss
-)
-
-# Define linearized variables (formatted as substitutions)
-linearized_vars = Dict(
-    c_P(t) => c_P_ss * (1 + Δc_P),  # Linearize c_P around steady state
-    h_P(t) => h_P_ss * (1 + Δh_P),  # Linearize h_P around steady state
-    q_h(t) => q_h_ss * (1 + Δq_h),  # Linearize q_h around steady state
-    d_P(t) => d_P_ss * (1 + Δd_P)   # Linearize d_P around steady state
-)
-
-# Substitute steady state and deviations into FOCs
-FOC_c_P_linearized = substitute(substitute(FOC_c_P, steady_state_subs), linearized_vars)
-FOC_h_P_linearized = substitute(substitute(FOC_h_P, steady_state_subs), linearized_vars)
-FOC_d_P_linearized = substitute(substitute(FOC_d_P, steady_state_subs), linearized_vars)
-
-# Simplify the linearized equations
-FOC_c_P_simplified = expand(FOC_c_P_linearized)
-FOC_h_P_simplified = expand(FOC_h_P_linearized)
-FOC_d_P_simplified = expand(FOC_d_P_linearized)
-
-# Display Results
-println("Linearized FOC with respect to c_P(t) (Patient households):")
-display(FOC_c_P_simplified)
-
-println("\nLinearized FOC with respect to h_P(t) (Patient households):")
-display(FOC_h_P_simplified)
-
-println("\nLinearized FOC with respect to d_P(t) (Patient households):")
-display(FOC_d_P_simplified)
 
 
 #%% impaticent household 
@@ -995,7 +948,7 @@ using Symbolics
 @syms l_t(i, m) i m λ_d
 
 # Define labor demand
-labor_demand = l_t(i, m) ~ (W_L(t) / W_L_prev(t))^(-ε_L(t)) * l_t_star
+labor_demand = l_t(i, m) - (W_L(t) / W_L_prev(t))^(-ε_L(t)) * l_t_star
 
 # Define the profit function
 profit_function = β_L^t * λ_L(t) * (
@@ -1005,7 +958,7 @@ profit_function = β_L^t * λ_L(t) * (
 )
 
 # Define the Lagrangian
-L_Labor = profit_function + λ_d * (l_t(i, m) - (W_L(t) / W_L_prev(t))^(-ε_L(t)) * l_t_star)
+L_Labor = profit_function + λ_d * labor_demand
 
 # Compute the FOC by differentiating the Lagrangian with respect to W_L(t)
 FOC_W_L = expand_derivatives(Differential(W_L(t))(L_Labor)) ~ 0
@@ -1037,7 +990,7 @@ display(FOC_W_L_simplified)
 
 
 
-%## wages
+#%% wages
 using Symbolics
 
 # Define variables and parameters
@@ -1107,11 +1060,11 @@ Utility_Capital = λ_E(t) * β_E^t * (
 )
 
 # Law of motion of capital
-Capital_Law = k_t ~ (1 - δ) * k_prev + (1 - (k_i / 2) * ((i_t * e_q(t) / i_prev) - 1)^2) * i_t
+Capital_Law = (k_t- (1 - δ) * k_prev + (1 - (k_i / 2) * ((i_t * e_q(t) / i_prev) - 1)^2) * i_t)
 
 # Define the Lagrangian for capital producers
 @syms λ_C
-L_Capital = Utility_Capital + λ_C * (k_t - ((1 - δ) * k_prev + (1 - (k_i / 2) * ((i_t * e_q(t) / i_prev) - 1)^2) * i_t))
+L_Capital = Utility_Capital + λ_C *Capital_Law
 
 # Compute first-order conditions (FOCs)
 FOC_q_k = expand_derivatives(Differential(q_k(t))(L_Capital)) ~ 0  # FOC w.r.t. q_k(t)
@@ -1126,8 +1079,6 @@ FOC_i_no_lagrange = substitute(FOC_i, λ_C => λ_C_expr)
 # Display Results
 println("Capital Producers' FOCs:")
 
-println("\nFOC with respect to q_k(t) (Price of capital):")
-display(FOC_q_k)
 
 println("\nFOC with respect to i_t (Investment) without λ_C:")
 display(FOC_i_no_lagrange)
@@ -1204,7 +1155,7 @@ using Symbolics
 @syms j y_t_j λ_d  # Additional variables
 
 # Define the demand function for final goods
-Demand = y_t_j ~ (P_t(j) / P_t(t))^(-ε_y) * y_t
+Demand = (y_t_j - (P_t(j) / P_t(t))^(-ε_y) * y_t)
 
 # Define the profit function
 Profit = β_P^t * λ_P(t) * (
@@ -1213,7 +1164,7 @@ Profit = β_P^t * λ_P(t) * (
 )
 
 # Define the Lagrangian
-L_FinalGoods = Profit + λ_d * (y_t_j - (P_t(j) / P_t(t))^(-ε_y) * y_t)
+L_FinalGoods = Profit + λ_d * Demand 
 
 # Compute the FOC by differentiating the Lagrangian with respect to P_t(j)
 FOC_P_t_j = expand_derivatives(Differential(P_t(j))(L_FinalGoods)) ~ 0
@@ -1228,8 +1179,7 @@ FOC_P_t_j_no_lambda = substitute(FOC_P_t_j, λ_d => λ_d_expr)
 FOC_P_t_j_simplified = simplify(FOC_P_t_j_no_lambda)
 
 # Display Results
-println("FOC with respect to P_t(j) (Price of final good):")
-display(FOC_P_t_j)
+
 
 println("\nFOC with respect to P_t(j) after eliminating λ_d:")
 display(FOC_P_t_j_no_lambda)
