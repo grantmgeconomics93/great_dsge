@@ -189,6 +189,7 @@ growth_rates = [missing; diff(housepriceindex[!, "HousePriceIndex"]) ./ lagged_v
 # Add the growth rate column to the DataFrame
 housepriceindex[:, :growthrate] = growth_rates
 
+
 #%%make sure all dates aline 
 
 using Dates
@@ -326,9 +327,8 @@ target = filter(row -> row[:observation_date] >= start_date1 && row[:observation
 test = filter(row -> row[:observation_date] >= start_date2 && row[:observation_date] <= end_date2, mergeddf)
 
 #%% contained maximizations focs to plug in to the dsge
-#%% Patient household 
-using Symbolics
-
+#%% Patient 
+using ModelingToolkit
 
 # Define time variable
 @variables t
@@ -386,7 +386,7 @@ println("\nFOC with respect to d_P(t) without λ_P (from FOC_h_P):")
 display(FOC_d_P_no_lambda_from_h_P)
 
 
-
+    
 
 #%%linearize patient households
 using Symbolics
@@ -443,7 +443,7 @@ display(FOC_d_P_simplified)
 #%% impaticent household 
 
 
-using Symbolics
+using ModelingToolkit
 
 # Define time variable
 @variables t
@@ -580,7 +580,7 @@ display(FOC_b_I_simplified)
     
 
 #%% entrepreneurs 
-using Symbolics
+using ModelingToolkit
 
 # Define parameters and variables
 @syms β_E a φ ξ_1 ξ_2 δ m_E
@@ -747,7 +747,7 @@ display(Comp_Slackness_simplified)
 
 
 #%%  Wholesale bankbranch
-using Symbolics
+using ModelingToolkit
 
 # Define time variable
 @variables t
@@ -883,7 +883,7 @@ display(FOC_K_b_simplified)
 
 #%% retail branch 
 
-using Symbolics
+using ModelingToolkit
 
 # Define all necessary symbolic variables
 @syms t b_t_n(t) r_b_n(t) r_t ε_b_n(t) b_t_n_star r_b_e(t) β_E b_t_e(t) R_b(t) B_t(t) k_r λ_loan
@@ -986,7 +986,7 @@ display(FOC_r_b_e_simplified)
 
 
 #%% wage
-using Symbolics
+using ModelingToolkit
 
 
 # Define time variable
@@ -1092,7 +1092,7 @@ display(FOC_W_L_simplified)
     
 
 #%% Capital 
-using Symbolics
+using ModelingToolkit
 
 # Define time variable
 @variables t
