@@ -3,7 +3,7 @@
 using XLSX, DataFrames
 
 # Set the working directory to the folder where your files are located
-cd("C:/Users/gealy/OneDrive/Documents/git/great dsge/great_dsge")
+#cd("C:/Users/gealy/OneDrive/Documents/git/great dsge/great_dsge")
 
 # Load "3-MonthTreasurey.xlsx"
 try
