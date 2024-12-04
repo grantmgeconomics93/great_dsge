@@ -385,6 +385,70 @@ display(FOC_c_P_no_lambda_from_h_P)
 println("\nFOC with respect to d_P(t) without λ_P (from FOC_h_P):")
 display(FOC_d_P_no_lambda_from_h_P)
 
+#%%
+using ModelingToolkit
+using Symbolics
+
+# Step 1: Define symbolic functions and parameters
+@syms t
+@syms h_P(t) c_P(t) q_h(t) ε_z(t) ε_h(t)
+@parameters β_P a φ h_P_star c_P_star q_h_star ε_z_star ε_h_star
+
+# Step 2: Define the original FOC equation
+foc = (-(1 - a) * β_P^t * q_h(t) * ε_z(t) / (c_P(t) - a * c_P(t - 1)) +
+       β_P^t * (ε_h(t) / h_P(t) - h_P(t)^φ)) ~ 0
+
+# Step 3: Perform Taylor expansion around steady states
+steady_state = [
+    h_P(t) => h_P_star,
+    c_P(t) => c_P_star,
+    c_P(t - 1) => c_P_star,  # Assuming stationarity
+    q_h(t) => q_h_star,
+    ε_z(t) => ε_z_star,
+    ε_h(t) => ε_h_star
+]
+
+# Expand derivatives for Taylor approximation
+taylor_expansion = expand_derivatives(foc.lhs, [h_P(t), c_P(t), q_h(t), ε_z(t), ε_h(t)] => steady_state)
+
+# Step 4: Substitute percentage deviations
+h_P_tilde = (h_P(t) - h_P_star) / h_P_star
+c_P_tilde = (c_P(t) - c_P_star) / c_P_star
+q_h_tilde = (q_h(t) - q_h_star) / q_h_star
+ε_z_tilde = (ε_z(t) - ε_z_star) / ε_z_star
+ε_h_tilde = (ε_h(t) - ε_h_star) / ε_h_star
+
+# Rewrite variables in terms of deviations
+substitutions = Dict(
+    h_P(t) => h_P_star * (1 + h_P_tilde),
+    c_P(t) => c_P_star * (1 + c_P_tilde),
+    c_P(t - 1) => c_P_star * (1 + c_P_tilde),  # Assuming stationarity
+    q_h(t) => q_h_star * (1 + q_h_tilde),
+    ε_z(t) => ε_z_star * (1 + ε_z_tilde),
+    ε_h(t) => ε_h_star * (1 + ε_h_tilde)
+)
+
+# Apply substitutions for percentage deviations
+foc_substituted = substitute(taylor_expansion, substitutions)
+
+# Approximate nonlinear terms (e.g., h_P(t)^φ)
+nonlinear_expansion = Dict(
+    (h_P_star * (1 + h_P_tilde))^φ => h_P_star^φ * (1 + φ * h_P_tilde)
+)
+linearized_foc = substitute(foc_substituted, nonlinear_expansion)
+
+# Step 5: Simplify the linearized equation
+simplified_foc = simplify(linearized_foc)
+
+# Step 6: Solve for h_P_tilde symbolically
+solution = Symbolics.solve_for(simplified_foc ~ 0, h_P_tilde)
+
+# Display the results
+println("Taylor-expanded, linearized FOC:")
+println(simplified_foc)
+println("\nSolution for h_P_tilde:")
+println(solution)
+
 
     
 
