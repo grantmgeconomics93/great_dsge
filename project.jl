@@ -343,9 +343,8 @@ U_P = β_P^t * ((1 - a) * ε_z(t) * log(c_P(t) - a * c_P(t - 1)) +
                (h_P(t)^(1 + φ)) / (1 + φ))
 
 # Define the budget constraint BC_P
-BC_P = w_P(t) * l_P(t) + (1 + r(t - 1)) / pi_var(t) * d_P(t - 1) - 
-       (c_P(t) + q_h(t) * h_P(t) + d_P(t))
-
+BC_P = β_P^t*( w_P(t) * l_P(t) + (1 + r(t - 1)) / pi_var(t) * d_P(t - 1) - 
+       (c_P(t) + q_h(t) * h_P(t) + d_P(t)))
 # Define the Lagrangian L_P
 L_P = U_P + λ_P * BC_P
 
