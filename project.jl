@@ -309,7 +309,38 @@ mergeddf = @chain t3_MonthTreasurey begin
     innerjoin(select(inflation, first_col(inflation), second_col(inflation)), on = first_col(inflation))
     innerjoin(select(moodyCorporateBondYield, first_col(moodyCorporateBondYield), second_col(moodyCorporateBondYield)), on = first_col(moodyCorporateBondYield))
 end
-#%% solve contained 
+#%% inflationrate 
+using DataFrames
+
+# Assuming `mergeddf` is your DataFrame
+
+using DataFrames
+
+# Assuming `mergeddf` is your DataFrame
+mergeddf[:, :π_growth_rate] = [NaN; diff(mergeddf.π) ./ mergeddf.π[1:end-1] * 100]
+
+# The new column `π_growth_rate` now contains the growth rate of the `π` column in percentage terms
+#%% productivity 
+using DataFrames, Distributions, Random
+
+# Assuming `mergeddf` is your DataFrame
+σe = 0.013  # Standard deviation of e_t
+n = nrow(mergeddf)  # Number of rows in the DataFrame
+A_t = Vector{Float64}(undef, n)  # Create a new vector for A_t
+A_t[1] = 1  # Set the first value of A_t
+
+# Generate random noise e_t and compute A_t recursively
+noise = rand(Normal(0, σe), n-1)  # Generate noise for remaining rows
+for t in 2:n
+    A_t[t] = exp(0.75 * log(A_t[t-1]) + noise[t-1])
+end
+
+# Add the new column to the DataFrame
+mergeddf[:, :A_t] = A_t
+
+# The DataFrame `mergeddf` now has the new column `A_t`
+#%%
+
 #%% create subsets 
 using Dates, DataFrames
 
@@ -325,6 +356,7 @@ target = filter(row -> row[:observation_date] >= start_date1 && row[:observation
 
 # Subset 2: From 1995-01-01 to 2013-01-01
 test = filter(row -> row[:observation_date] >= start_date2 && row[:observation_date] <= end_date2, mergeddf)
+#%%
 
 
 
