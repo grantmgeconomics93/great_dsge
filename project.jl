@@ -358,43 +358,7 @@ target = filter(row -> row[:observation_date] >= start_date1 && row[:observation
 test = filter(row -> row[:observation_date] >= start_date2 && row[:observation_date] <= end_date2, mergeddf)
 
 #%% contained maximizations focs to plug in to the dsge
-#%% Patient 
-using ModelingToolkit
 
-# Define time variable
-@variables t
-
-# Define parameters and variables
-@syms β_P a φ ε_z(t) ε_h(t)
-@syms c_P(t) h_P(t) d_P(t) q_h(t) w_P(t) l_P(t) r(t) pi_var(t) λ_P
-
-# Define the utility function U_P
-U_P = β_P^t * ((1 - a) * ε_z(t) * log(c_P(t) - a * c_P(t - 1)) +
-               ε_h(t) * log(h_P(t)) - 
-               (h_P(t)^(1 + φ)) / (1 + φ))
-
-# Define the budget constraint BC_P
-BC_P = β_P^t*( w_P(t) * l_P(t) + (1 + r(t - 1)) / pi_var(t) * d_P(t - 1) - 
-       (c_P(t) + q_h(t) * h_P(t) + d_P(t)))
-# Define the Lagrangian L_P
-L_P = U_P + λ_P * BC_P
-
-# Compute the FOCs
-FOC_c_P = expand_derivatives(Differential(c_P(t))(L_P)) ~ 0
-FOC_h_P = expand_derivatives(Differential(h_P(t))(L_P)) ~ 0
-FOC_d_P = expand_derivatives(Differential(d_P(t))(L_P)) ~ 0
-
-# Solve for λ_P using FOC_c_P
-λ_P_from_c_P = symbolic_linear_solve(FOC_c_P, λ_P)
-
-# Substitute λ_P into other FOCs from FOC_c_P
-FOC_h_P_no_lambda_from_c_P = substitute(FOC_h_P, λ_P => λ_P_from_c_P)
-FOC_d_P_no_lambda_from_c_P = substitute(FOC_d_P, λ_P => λ_P_from_c_P)
-
-# Solve for λ_P using FOC_h_P
-λ_P_from_h_P = symbolic_linear_solve(FOC_h_P, λ_P)
-
-# Substitute λ_P into other FOCs from FOC_h_P
 FOC_c_P_no_lambda_from_h_P = substitute(FOC_c_P, λ_P => λ_P_from_h_P)
 FOC_d_P_no_lambda_from_h_P = substitute(FOC_d_P, λ_P => λ_P_from_h_P)
 
