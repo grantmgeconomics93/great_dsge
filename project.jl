@@ -354,10 +354,39 @@ end_date2 = Date("2008-01-01")
 # Subset 1: From 1991-01-01 to 2006-01-01
 target = filter(row -> row[:observation_date] >= start_date1 && row[:observation_date] <= end_date1, mergeddf)
 
-# Subset 2: From 1995-01-01 to 2013-01-01
-test = filter(row -> row[:observation_date] >= start_date2 && row[:observation_date] <= end_date2, mergeddf)
-#%%
+wavelet_filter = wavelet(Daubechies, 2)
+levels = 4 # Adjust levels as needed
 
+# Apply MODWT to each column
+modwt_data = [modwt(data_matrix[:, i], wavelet_filter, levels) for i in 1:size(data_matrix, 2)]
+
+# Extract approximation coefficients at the desired level
+approximation = hcat([wt.approx[levels] for wt in modwt_data]...)
+
+# Prepare Data for Estimation
+observable_variables = approximation
+
+# Model Specification
+model = DSGE.Model()
+
+
+
+
+#
+
+# Equations
+@equations model begin
+# Define the model equations
+@equations model begin
+  
+    
+   
+    
+end
+
+    
+   
+end
 
 
 # Initial Values for Parameters (Posterior Modes)
